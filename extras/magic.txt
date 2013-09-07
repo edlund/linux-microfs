@@ -1,0 +1,25 @@
+# Patterns for your local magic file.
+
+0       ulelong     0x28211407    Linux microfs offset 0
+4       ulelong     x             s_size %d
+8       ulelong     x             s_flags 0x%x
+12      ulelong     x             s_crc 0x%x
+16      ulelong     x             s_blocks %d
+20      uleshort    x             s_files %d
+22      ulelong     x             s_ctime %d
+26      uleshort    x             s_blkshift %d
+28      uleshort    x             s_future 0x%x
+30      string      >\0           s_signature "%.16s"
+46      string      >\0           s_name "%.16s"
+
+512     ulelong     0x28211407    Linux microfs offset 512
+516     ulelong     x             s_size %d
+520     ulelong     x             s_flags 0x%x
+524     ulelong     x             s_crc 0x%x
+528     ulelong     x             s_blocks %d
+532     uleshort    x             s_files %d
+534     ulelong     x             s_ctime %d
+538     uleshort    x             s_blkshift %d
+540     uleshort    x             s_future 0x%x
+542     string      >\0           s_signature "%.16s"
+558     string      >\0           s_name "%.16s"

@@ -1,0 +1,35 @@
+# This device table file is mainly used for testing microfsmki
+# and the lkm. It follows the same format as device table files
+# for cramfs, where each table entry takes the form of:
+# 
+# <name> <type> <mode> <uid> <gid> <major> <minor> <start> <inc> <count>
+# 
+# where %name is the file name (given as an absolute path),
+# %mode, %uid, %gid are what you would expect, %major, %minor
+# %start, %inc and %count are used to create device files
+# and %type can be one of the following:
+#  - 'f': A regular file
+#  - 'd': Directory
+#  - 'c': Character dev
+#  - 'b': Block dev
+#  - 'p': FIFO (named pipe)
+# 
+# For more information, please refer to the cramfs-tools and
+# the accompanying device table example file:
+#  - http://sourceforge.net/projects/cramfs/
+#  - http://cramfs.cvs.sourceforge.net/viewvc/cramfs/
+
+#<name>       <type> <mode> <uid> <gid> <major> <minor> <start> <inc> <count>
+/dev          d      755    0     0     -       -       -       -     -
+/dev/mem      c      640    0     0     1       1       0       0     -
+/dev/kmem     c      640    0     0     1       2       0       0     -
+/dev/null     c      640    0     0     1       3       0       0     -
+/dev/zero     c      640    0     0     1       5       0       0     -
+/dev/random   c      640    0     0     1       8       0       0     -
+/dev/urandom  c      640    0     0     1       9       0       0     -
+/dev/tty      c      666    0     0     5       0       0       0     -
+/dev/tty      c      666    0     0     4       0       0       1     6
+/dev/console  c      640    0     0     5       1       0       0     -
+/dev/ram      b      640    0     0     1       1       0       0     -
+/dev/ram      b      640    0     0     1       0       0       1     4
+/dev/loop     b      640    0     0     7       0       0       1     2
