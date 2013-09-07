@@ -23,7 +23,7 @@
 #error "#include hostprogs.h first"
 #endif
 #ifndef __MICROFS_H__
-#error "include microfs.h first"
+#error "#include microfs.h first"
 #endif
 
 /* Wrapper for %makedev() which fails if the device number

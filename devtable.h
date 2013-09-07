@@ -23,7 +23,7 @@
 #error "#include hostprogs.h first"
 #endif
 #ifndef __MICROFS_H__
-#error "include microfs.h first"
+#error "#include microfs.h first"
 #endif
 
 struct devtable_entry {
