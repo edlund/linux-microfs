@@ -232,7 +232,7 @@ for img_src in "${img_srcs[@]}" ; do
 			"-p \"`basename \"${img_src}\"`-\""
 			"-x \"-x\""
 		)
-		image_cmd="${script_dir}/tools/mkckverimg.sh ${image_params[@]}"
+		image_cmd="${script_dir}/tools/imgmkckver.sh ${image_params[@]}"
 		echo "$0: Running image command \"${image_cmd}\"..."
 		eval "${image_cmd}"
 		echo "$0: ... ok."
