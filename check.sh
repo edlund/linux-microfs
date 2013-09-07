@@ -173,11 +173,13 @@ nonsense_mount() {
 	local img_blksz=$1
 	local img_path="${temp_dir}/nonsense-${img_blks}-${img_blksz}.img"
 	local img_mount="${img_path}.mount"
-	dd count=$img_blks bs=$img_blksz "if=/dev/urandom" "of=${img_path}"
+	echo "$0: mounting ${img_blks} ${img_blksz} byte blocks of random data"
+	dd count=$img_blks bs=$img_blksz "if=/dev/urandom" "of=${img_path}" \
+		> /dev/null 2>&1
 	mkdir "${img_mount}"
 	untrap_ERR
 	sudo mount -t microfs -o loop -r "${img_path}" "${img_mount}" \
-		 > /dev/null 2>&1
+		> /dev/null 2>&1
 	local stat=$?
 	trap_ERR
 	test $stat -eq 1
