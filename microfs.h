@@ -328,7 +328,7 @@ static inline unsigned long microfs_get_ino(const struct microfs_inode*
 	const inode, const __u32 offset)
 {
 	const __u32 ioffset = __le32_to_cpu(inode->i_offset);
-	return ioffset? ioffset: offset;
+	return ioffset? ioffset: offset + 1;
 }
 
 /* Get the data offset for the given inode.
