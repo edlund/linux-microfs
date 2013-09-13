@@ -56,7 +56,8 @@ typedef void (*devtable_process_dentry_t)(struct devtable_dentry* const ent,
 	void* data, const char* file, const char* line, const size_t linenumber);
 
 static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
-	void* data, const char* path, const char* line, const size_t linenumber)
+	void* data, const char* path, const char* line, const size_t linenumber,
+	const int devbits)
 {
 	struct devtable_entry devt_ent = {
 		.dt_type = '?',
@@ -130,7 +131,7 @@ static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
 			devt_dent.de_pathlen = strlen(devt_dent.de_path);
 			devt_dent.de_dev = makedev_lim(devt_ent.dt_dev_major,
 				minor_n(devt_ent.dt_dev_major, devt_ent.dt_dev_start,
-				devt_ent.dt_dev_incr, i), MICROFS_ISIZEX_WIDTH);
+				devt_ent.dt_dev_incr, i), devbits);
 			
 			callback(&devt_dent, data, path, line, linenumber);
 			
@@ -140,7 +141,7 @@ static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
 		devt_dent.de_path = devt_ent.dt_path;
 		devt_dent.de_pathlen = devt_ent.dt_pathlen;
 		devt_dent.de_dev = makedev_lim(devt_ent.dt_dev_major, devt_ent.dt_dev_minor,
-			MICROFS_ISIZEX_WIDTH);
+			devbits);
 		
 		callback(&devt_dent, data, path, line, linenumber);
 	}
@@ -149,7 +150,7 @@ static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
 }
 
 static inline void devtable_parse(devtable_process_dentry_t callback,
-	void* data, const char* path)
+	void* data, const char* path, const int devbits)
 {
 	FILE* devtable = fopen(path, "r");
 	if (!devtable) {
@@ -175,13 +176,69 @@ static inline void devtable_parse(devtable_process_dentry_t callback,
 		
 		if (length && *line != '#') {
 			devtable_interpret_entry(callback, data, path,
-				line, linenumber++);
+				line, linenumber++, devbits);
 		}
 		
 		free(line);
 		line = NULL;
 		length = 0;
 	}
+}
+
+static inline int devtable_writable(const struct stat* const st)
+{
+	return (
+		S_ISDIR(st->st_mode) ||
+		S_ISCHR(st->st_mode) ||
+		S_ISBLK(st->st_mode) ||
+		S_ISFIFO(st->st_mode)
+	);
+}
+
+static inline void devtable_write(FILE* const devtable, const int devbits,
+	struct hostprog_path* const rootpath, struct hostprog_path* const dirpath,
+	struct stat* const dirpathst)
+{
+	size_t rootpath_lvl = hostprog_path_lvls(rootpath);
+	dev_t dev = makedev_lim(
+		major(dirpathst->st_rdev),
+		minor(dirpathst->st_rdev),
+		devbits
+	);
+	char dev_start = '-';
+	char dev_incr = '-';
+	char dev_count = '-';
+	
+	if (hostprog_path_append(rootpath, dirpath->p_path) < 0)
+		error("failed to append \"%s\" to the root path", dirpath->p_path);
+	
+	int err = fprintf(devtable,
+		"%s\t"
+		"%c\t"
+		"%lo\t"
+		"%lu\t"
+		"%lu\t"
+		"%d\t"
+		"%d\t"
+		"%c\t"
+		"%c\t"
+		"%c\n",
+		rootpath->p_path,
+		nodtype(dirpathst->st_mode),
+		(unsigned long)dirpathst->st_mode,
+		(unsigned long)dirpathst->st_uid,
+		(unsigned long)dirpathst->st_gid,
+		major(dev),
+		minor(dev),
+		dev_start,
+		dev_incr,
+		dev_count);
+	
+	if (err < 0) {
+		error("failed to write a devtable row for \"%s\": %s",
+			rootpath->p_path, strerror(errno));
+	}
+	hostprog_path_dirnamelvl(rootpath, rootpath_lvl);
 }
 
 #endif

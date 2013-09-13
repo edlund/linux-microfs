@@ -47,7 +47,7 @@ microfs-y := \
 hostprogs-y := \
 	microfscki \
 	microfsmki \
-	check
+	test
 
 microfscki-objs := hostprog_microfscki.o hostprogs.o
 HOSTLOADLIBES_microfscki := -lrt -lz
@@ -55,8 +55,12 @@ HOSTLOADLIBES_microfscki := -lrt -lz
 microfsmki-objs := hostprog_microfsmki.o hostprogs.o
 HOSTLOADLIBES_microfsmki := -lrt -lz
 
-check-objs := check.o
-HOSTLOADLIBES_check := -lcheck
+test-objs := \
+	test.o \
+	test_master.o \
+	test_hostprogs.o \
+	hostprogs.o
+HOSTLOADLIBES_test := -lcheck
 
 always := $(hostprogs-y)
 
@@ -68,15 +72,17 @@ requirevar-%:
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make -C $(PWD)/tools -f Makefile.extra all
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	make -C $(PWD)/tools -f Makefile.extra clean
 
 # Usage: make check [CHECKARGS="..."]
 # 
 check: all
-	$(PWD)/check
-	$(PWD)/check.sh $(CHECKARGS)
+	$(PWD)/test
+	$(PWD)/test.sh $(CHECKARGS)
 
 # Usage: make remotecheck \
 #     REMOTEHOST=localhost REMOTEPORT=2222 REMOTEUSER=erik \

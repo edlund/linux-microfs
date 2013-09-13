@@ -17,7 +17,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-# check.sh: Functional tests for microfs.
+# test.sh: Functional tests for microfs.
 
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
@@ -197,6 +197,49 @@ nonsense_mount 512 64
 nonsense_mount 512 128
 nonsense_mount 512 4096
 
+devtable_mount() {
+	local mk_cmd="$1"
+	echo "$0: running device table mk command: \"${mk_cmd}\""
+	eval "${mk_cmd}"
+	local test_options="$2"
+	local test_cmd="${script_dir}/tools/devtabletests.sh ${test_options}"
+	echo "$0: running device table test command: \"${test_cmd}\""
+	eval "${test_cmd}"
+}
+
+# Try to use device tables.
+devtable_host_cmd=(
+	"${script_dir}/tools/devtmk"
+	"24"
+	"\"${temp_dir}/devtable_host.txt\""
+	"/"
+	"/dev"
+	"1>devtable_host.txt.1"
+	"2>devtable_host.txt.2"
+)
+devtable_host_cmd="${devtable_host_cmd[@]}"
+devtable_host=(
+	"-t \"${temp_dir}\""
+	"-d \"${temp_dir}/devtable_host.txt\""
+	"-m \"${script_dir}/microfsmki\""
+	"-f \"microfs\""
+)
+devtable_host="${devtable_host[@]}"
+devtable_simple_cmd=(
+	"true"
+)
+devtable_simple_cmd="${devtable_simple_cmd[@]}"
+devtable_simple=(
+	"-t \"${temp_dir}\""
+	"-d \"${script_dir}/extras/devtable.txt\""
+	"-m \"${script_dir}/microfsmki\""
+	"-f \"microfs\""
+)
+devtable_simple="${devtable_simple[@]}"
+
+devtable_mount "${devtable_simple_cmd}" "${devtable_simple}"
+devtable_mount "${devtable_host_cmd}" "${devtable_host}"
+
 # Try every compression option with every block size and
 # try that with and without padding.
 compression_options=(
@@ -235,7 +278,7 @@ for img_src in "${img_srcs[@]}" ; do
 			"-x \"-x\""
 		)
 		image_cmd="${script_dir}/tools/imgmkckver.sh ${image_params[@]}"
-		echo "$0: Running image command \"${image_cmd}\"..."
+		echo "$0: running image command \"${image_cmd}\"..."
 		eval "${image_cmd}"
 		echo "$0: ... ok."
 	done

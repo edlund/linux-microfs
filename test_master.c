@@ -1,5 +1,5 @@
 /* microfs - Minimally Improved Compressed Read Only File System
- * Copyright (C) 2012 Erik Edlund <erik.edlund@32767.se>
+ * Copyright (C) 2013 Erik Edlund <erik.edlund@32767.se>
  * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,26 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <asm/byteorder.h>
-
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-
-#include <check.h>
-
-#include "microfs.h"
-
-#if !( \
-	CHECK_MAJOR_VERSION >= 0 && \
-	CHECK_MINOR_VERSION >= 9 && \
-	CHECK_MICRO_VERSION >= 8 \
-)
-#error "Please upgrade check to v.0.9.8+."
-#endif
+#include "test.h"
 
 START_TEST(test_microfs_ispow2)
 	const __u16 pow2[] = {
@@ -87,7 +68,7 @@ START_TEST(test_sz_blkceil)
 	_ck_assert_int(sz_blkceil(32768, 32768), ==, 32768);
 END_TEST
 
-static Suite* create_master_suite(void)
+Suite* create_master_suite(void)
 {
 	Suite* s;
 	TCase* tc;
@@ -102,22 +83,4 @@ static Suite* create_master_suite(void)
 	tcase_add_test(tc, test_sz_blkceil);
 	
 	return s;
-}
-
-int main(int argc, char* argv[])
-{
-	(void)argc;
-	(void)argv;
-	
-	int failures;
-	
-	SRunner* sr = srunner_create(create_master_suite());
-	
-	srunner_run_all(sr, CK_VERBOSE);
-	failures = srunner_ntests_failed(sr);
-	
-	srunner_free(sr);
-	
-	return failures == 0?
-		EXIT_SUCCESS: EXIT_FAILURE;
 }

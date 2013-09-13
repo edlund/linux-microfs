@@ -42,6 +42,8 @@ struct imgdesc {
 	const char* de_infile;
 	/* Output directory, used if/when extracting. */
 	const char* de_extractdir;
+	/* Length of %de_extractdir. */
+	size_t de_extractdirlen;
 	/* Image file descriptor. */
 	int de_fd;
 	/* Memory mapping of the entire image. */
@@ -76,6 +78,7 @@ static void usage(const char* const exe, FILE* const dest)
 {
 	fprintf(dest,
 		"\nUsage: %s [-%s] imgfile\n"
+		"\nexample: %s boot.img\n\n"
 		" -h          print this message (to stdout) and quit\n"
 		" -v          be verbose\n"
 		" -q          only check the superblock and the CRC32 checksum\n"
@@ -85,7 +88,7 @@ static void usage(const char* const exe, FILE* const dest)
 		" -U          do NOT set the utime to match the image when extracting\n"
 		" -x <str>    directory to extract the image content to\n"
 		" imgfile     image file to check\n"
-		"\n", exe, CKI_OPTIONS);
+		"\n", exe, CKI_OPTIONS, exe);
 	
 	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
 }
@@ -132,6 +135,7 @@ static struct imgdesc* create_imgdesc(int argc, char* argv[])
 				break;
 			case 'x':
 				desc->de_extractdir = optarg;
+				desc->de_extractdirlen = strlen(optarg);
 				break;
 			default:
 				/* Ignore it.
@@ -347,36 +351,38 @@ static void ck_compression(struct imgdesc* const desc,
 
 static void ck_file(struct imgdesc* const desc,
 	const struct microfs_inode* const inode, const uoff_t offset,
-	const uoff_t next, const char* name)
+	const uoff_t next, const struct hostprog_path* const path)
 {
 	char* i_dest = NULL;
 	size_t i_size = i_getsize(inode);
 	if (i_size == 0)
-		error("zero file size for file \"%s\" at 0x%x", name, (__u32)offset);
+		error("zero file size for file \"%s\" at 0x%x",
+			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	
 	uoff_t i_offset = __le32_to_cpu(inode->i_offset);
 	if (i_offset < offset + next)
-		error("invalid offset for file \"%s\" at 0x%x", name, (__u32)offset);
+		error("invalid offset for file \"%s\" at 0x%x",
+			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	
 	int i_fd = 0;
 	
 	if (desc->de_extractdir) {
 		int flags = O_RDWR | O_CREAT | O_TRUNC;
 		int mode = __le16_to_cpu(inode->i_mode);
-		i_fd = open(name, flags, mode);
+		i_fd = open(path->p_path, flags, mode);
 		if (i_fd < 0) {
-			error("failed to open file \"%s\" from 0x%x: %s", name,
-				(__u32)offset, strerror(errno));
+			error("failed to open file \"%s\" from 0x%x: %s",
+				path->p_path, (__u32)offset, strerror(errno));
 		}
 		if (ftruncate(i_fd, i_size) < 0) {
-			error("failed to set file size for \"%s\" from 0x%x: %s", name,
-				(__u32)offset, strerror(errno));
+			error("failed to set file size for \"%s\" from 0x%x: %s",
+				path->p_path, (__u32)offset, strerror(errno));
 		}
 		i_dest = mmap(NULL, i_size, PROT_READ | PROT_WRITE,
 			MAP_SHARED, i_fd, 0);
 		if (i_dest == MAP_FAILED) {
-			error("failed to mmap file \"%s\" from 0x%x: %s", name,
-				(__u32)offset, strerror(errno));
+			error("failed to mmap file \"%s\" from 0x%x: %s",
+				path->p_path, (__u32)offset, strerror(errno));
 		}
 	}
 	
@@ -390,16 +396,18 @@ static void ck_file(struct imgdesc* const desc,
 
 static void ck_symlink(struct imgdesc* const desc,
 	const struct microfs_inode* const inode, const uoff_t offset,
-	const uoff_t next, const char* name)
+	const uoff_t next, const struct hostprog_path* const path)
 {
 	char* i_dest = NULL;
 	size_t i_size = i_getsize(inode);
 	if (i_size == 0)
-		error("zero file size for symlink \"%s\" at 0x%x", name, (__u32)offset);
+		error("zero file size for symlink \"%s\" at 0x%x",
+			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	
 	uoff_t i_offset = __le32_to_cpu(inode->i_offset);
 	if (i_offset < offset + next)
-		error("invalid offset for symlink \"%s\" at 0x%x", name, (__u32)offset);
+		error("invalid offset for symlink \"%s\" at 0x%x",
+			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	
 	if (desc->de_extractdir) {
 		i_dest = malloc(i_size + 1);
@@ -411,9 +419,9 @@ static void ck_symlink(struct imgdesc* const desc,
 	
 	if (desc->de_extractdir) {
 		i_dest[i_size] = '\0';
-		if (symlink(i_dest, name) < 0) {
-			error("failed to symlink \"%s\" to \"%s\" from 0x%x", name,
-				i_dest, (__u32)offset);
+		if (symlink(i_dest, path->p_path) < 0) {
+			error("failed to symlink \"%s\" to \"%s\" from 0x%x",
+				path->p_path, i_dest, (__u32)offset);
 		}
 		free(i_dest);
 	}
@@ -421,14 +429,14 @@ static void ck_symlink(struct imgdesc* const desc,
 
 static void ck_nod(struct imgdesc* const desc,
 	const struct microfs_inode* const inode, const uoff_t offset,
-	const char* name)
+	const struct hostprog_path* const path)
 {
 	dev_t dev = 0;
 	mode_t mode = __le16_to_cpu(inode->i_mode);
 	
 	if (inode->i_offset) {
 		error("special file \"%s\" has non-zero offset at 0x%x",
-			name, (__u32)offset);
+			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	}
 	
 	if (S_ISCHR(mode) || S_ISBLK(mode)) {
@@ -436,28 +444,28 @@ static void ck_nod(struct imgdesc* const desc,
 	} else if (S_ISFIFO(mode)) {
 		if (i_getsize(inode)) {
 			error("fifo \"%s\" has non-zero size at 0x%x",
-				name, (__u32)offset);
+				path->p_path + desc->de_extractdirlen, (__u32)offset);
 		}
 	} else if (S_ISSOCK(mode)) {
 		if (i_getsize(inode)) {
 			error("socket \"%s\" has non-zero size at 0x%x",
-				name, (__u32)offset);
+				path->p_path + desc->de_extractdirlen, (__u32)offset);
 		}
 	} else {
 		error("unsupported mode for \"%s\" at 0x%x",
-			name, (__u32)offset);
+			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	}
 	
 	if (desc->de_extractdir) {
 		if (S_ISFIFO(mode)) {
-			if (mkfifo(name, mode) < 0) {
+			if (mkfifo(path->p_path, mode) < 0) {
 				error("failed to create fifo \"%s\" from 0x%x: %s",
-					name, (__u32)offset, strerror(errno));
+					path->p_path, (__u32)offset, strerror(errno));
 			}
 		} else {
-			if (mknod(name, mode, dev) < 0) {
+			if (mknod(path->p_path, mode, dev) < 0) {
 				error("failed to create special inode \"%s\" from 0x%x: %s",
-					name, (__u32)offset, strerror(errno));
+					path->p_path, (__u32)offset, strerror(errno));
 			}
 		}
 	}
@@ -475,12 +483,12 @@ static void ck_name(const char* const name, const size_t namelen,
 
 static void ck_metadata(struct imgdesc* const desc,
 	const struct microfs_inode* const inode, const uoff_t offset,
-	const char* const name)
+	const struct hostprog_path* const path)
 {
 #define CK_ZERO(Value) \
 	if ((Value) == 0) { \
 		error("\"%s\" is zero for \"%s\" at 0x%x", #Value, \
-			name, (__u32)offset); \
+			path->p_path + desc->de_extractdirlen, (__u32)offset); \
 	}
 	
 	CK_ZERO(inode->i_mode);
@@ -493,15 +501,15 @@ static void ck_metadata(struct imgdesc* const desc,
 		__u16 gid = __le16_to_cpu(inode->i_gid);
 		__u16 mode = __le16_to_cpu(inode->i_mode);
 		
-		if (desc->de_chownership && lchown(name, uid, gid) < 0) {
+		if (desc->de_chownership && lchown(path->p_path, uid, gid) < 0) {
 			error("failed to change ownership for \"%s\" (origin 0x%x): %s",
-				name, (__u32)offset, strerror(errno));
+				path->p_path, (__u32)offset, strerror(errno));
 		}
 		
 		if (!S_ISLNK(mode)) {
-			if (desc->de_chmode && chmod(name, mode) < 0) {
+			if (desc->de_chmode && chmod(path->p_path, mode) < 0) {
 				error("failed to change mode for \"%s\" (origin 0x%x): %s",
-					name, (__u32)offset, strerror(errno));
+					path->p_path, (__u32)offset, strerror(errno));
 			}
 			
 			__u32 ctime = __le32_to_cpu(desc->de_sb->s_ctime);
@@ -509,37 +517,27 @@ static void ck_metadata(struct imgdesc* const desc,
 				.actime = ctime,
 				.modtime = ctime
 			};
-			if (desc->de_chutime && utime(name, &thenish) < 0) {
+			if (desc->de_chutime && utime(path->p_path, &thenish) < 0) {
 				error("failed set access and modification times for \"%s\""
-					" (origin 0x%x): %s", name, (__u32)offset, strerror(errno));
+					" (origin 0x%x): %s", path->p_path, (__u32)offset,
+					strerror(errno));
 			}
 		}
 	}
 }
 
 static void ck_dir(struct imgdesc* const desc,
-	const struct microfs_inode* const inode, const char* wd)
+	const struct microfs_inode* const inode,
+	struct hostprog_path* const path)
 {
-	char* oldwd = NULL;
 	char* namebuf = malloc(MICROFS_MAXNAMELEN + 1);
-	
 	if (!namebuf)
 		error("failed to allocate the name buffer");
-	
-	if (desc->de_extractdir) {
-		oldwd = getcwd(NULL, 0);
-		if (!oldwd) {
-			error("failed to get the cwd: %s", strerror(errno));
-		}
-		if (chdir(wd) < 0) {
-			error("failed to change the wd to \"%s\" in \"%s\": %s",
-				wd, oldwd, strerror(errno));
-		}
-	}
 	
 	uoff_t offset = __le32_to_cpu(inode->i_offset);
 	uoff_t dir_offset = 0;
 	size_t dir_size = i_getsize(inode);
+	size_t dir_lvl = hostprog_path_lvls(path);
 	
 	while (dir_offset < dir_size) {
 		struct microfs_inode* dentry = (struct microfs_inode*)
@@ -553,40 +551,41 @@ static void ck_dir(struct imgdesc* const desc,
 		name = namebuf;
 		
 		ck_name(name, namelen, offset);
-		
-		message(VERBOSITY_1, " - %s (0x%x)", name, (__u32)offset);
+		if (hostprog_path_append(path, name) < 0)
+			error("failed to add a filename to the hostprog_path");
 		
 		mode_t mode = __le16_to_cpu(dentry->i_mode);
 		uoff_t next = sizeof(*dentry) + namelen;
 		
+		message(VERBOSITY_1, " ck %c %s (0x%x)",
+			nodtype(mode), path->p_path + desc->de_extractdirlen,
+			(__u32)offset);
+		
 		if (S_ISREG(mode)) {
-			ck_file(desc, dentry, offset, next, name);
+			ck_file(desc, dentry, offset, next, path);
 		} else if (S_ISLNK(mode)) {
-			ck_symlink(desc, dentry, offset, next, name);
+			ck_symlink(desc, dentry, offset, next, path);
 		} else if (S_ISDIR(mode)) {
-			if (desc->de_extractdir && mkdir(name, mode) < 0) {
+			if (desc->de_extractdir && mkdir(path->p_path, mode) < 0) {
 				if (errno != EEXIST) {
-					error("failed to create directory \"%s\": %s", name,
-						strerror(errno));
+					error("failed to create directory \"%s\": %s",
+						path->p_path, strerror(errno));
 				}
 			}
-			ck_dir(desc, dentry, name);
+			ck_dir(desc, dentry, path);
 		} else {
-			ck_nod(desc, dentry, offset, name);
+			ck_nod(desc, dentry, offset, path);
 		}
 		
-		ck_metadata(desc, dentry, offset, name);
+		ck_metadata(desc, dentry, offset, path);
 		
 		offset += next;
 		dir_offset += next;
-	}
-	
-	if (oldwd && chdir(oldwd) < 0) {
-		error("failed to reset the wd: %s", strerror(errno));
+		
+		hostprog_path_dirnamelvl(path, dir_lvl);
 	}
 	
 	free(namebuf);
-	free(oldwd);
 }
 
 int main(int argc, char* argv[])
@@ -602,12 +601,18 @@ int main(int argc, char* argv[])
 	ck_crc(desc);
 	
 	if (!desc->de_quickie) {
-		if (desc->de_extractdir && mkdir(desc->de_extractdir,
+		struct hostprog_path* path = NULL;
+		if (hostprog_path_create(&path, desc->de_extractdir,
+				MICROFS_MAXNAMELEN, MICROFS_MAXNAMELEN) != 0) {
+			error("failed to create the path for the extract dir: %s",
+				strerror(errno));
+		}
+		if (path->p_pathlen && mkdir(path->p_path,
 				__le16_to_cpu(desc->de_sb->s_root.i_mode)) == -1) {
 			if (errno != EEXIST)
 				error("failed to create the extract dir: %s", strerror(errno));
 		}
-		ck_dir(desc, &desc->de_sb->s_root, desc->de_extractdir);
+		ck_dir(desc, &desc->de_sb->s_root, path);
 	}
 	
 	if (munmap(desc->de_image, desc->de_outersz) < 0)

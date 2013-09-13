@@ -84,7 +84,7 @@ eval "${ck_cmd} \"${img_file}\" 1>\"${cmd_log}.ck.1\" 2>\"${cmd_log}.ck.2\""
 img_mount="${img_file}.mount"
 
 mkdir "${img_mount}"
-atexit rmdir "${img_mount}"
+atexit_0 rmdir "${img_mount}"
 eval "sudo mount -r -o loop -t ${mount_type} \"${img_file}\" \"${img_mount}\""
 atexit sudo umount "${img_mount}"
 

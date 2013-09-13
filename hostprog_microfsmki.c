@@ -29,9 +29,6 @@
 #include "dev.h"
 #include "devtable.h"
 
-#include <dirent.h>
-#include <libgen.h>
-
 /* getopt() args, see usage().
  */
 #define MKI_OPTIONS "hvepqsZSb:u:n:c:D:"
@@ -65,19 +62,6 @@ struct entry {
 	struct entry* e_sibling;
 	/* Linked list of other entries with the same file content. */
 	struct entry* e_same;
-};
-
-/* A simplistic stack implementation.
- */
-struct entry_stack {
-	/* Next free slot. */
-	size_t st_index;
-	/* Size of %st_slots. */
-	size_t st_size;
-	/* Factor to grow %st_slots with. */
-	size_t st_growth;
-	/* The entries held by the stack. */
-	struct entry** st_slots;
 };
 
 /* Specification for the image.
@@ -124,7 +108,7 @@ struct imgspec {
 	/* Root entry. */
 	struct entry* sp_root;
 	/* Stack of all regular files, used to find duplicates. */
-	struct entry_stack sp_regstack;
+	struct hostprog_stack* sp_regstack;
 };
 
 /* Set the uid or gid for the given entry and check for
@@ -139,89 +123,6 @@ struct imgspec {
 				" - it has been set to 0 for \"%s\"", Lim, (Entry)->e_name); \
 		} \
 	}
-
-static inline int entry_stack_alloc(struct entry_stack* const s,
-	const size_t size, const size_t growth)
-{
-	if (!s || size == 0 || growth < 2) {
-		errno = EINVAL;
-		return -1;
-	}
-	memset(s, 0, sizeof(*s));
-	s->st_size = size;
-	s->st_growth = growth;
-	if (!(s->st_slots = malloc(s->st_size * sizeof(*s->st_slots))))
-		return -1;
-	return 0;
-}
-
-static inline int entry_stack_free(struct entry_stack* const s)
-{
-	if (!s) {
-		errno = EINVAL;
-		return -1;
-	}
-	free(s->st_slots);
-	return 0;
-}
-
-static inline int entry_stack_top(struct entry_stack* const s,
-	struct entry** e)
-{
-	if (!s || !e) {
-		errno = EINVAL;
-		return -1;
-	}
-	*e = s->st_slots[s->st_index - 1];
-	return 0;
-}
-
-static inline int entry_stack_push(struct entry_stack* s, struct entry* e)
-{
-	if (!s || !e) {
-		errno = EINVAL;
-		return -1;
-	}
-	if (s->st_index == s->st_size) {
-		s->st_size *= s->st_growth;
-		s->st_slots = realloc(s->st_slots, s->st_size * sizeof(*s->st_slots));
-		if (!s->st_slots)
-			return -1;
-	}
-	s->st_slots[s->st_index++] = e;
-	return 0;
-}
-
-static inline int entry_stack_pop(struct entry_stack* const s,
-	struct entry** e)
-{
-	if (!s) {
-		errno = EINVAL;
-		return -1;
-	} else if (s->st_index == 0) {
-		errno = EFAULT;
-		return -1;
-	}
-	*e = s->st_slots[--s->st_index];
-	return 0;
-}
-
-static inline int entry_stack_size(const struct entry_stack* const s)
-{
-	if (!s) {
-		errno = EINVAL;
-		return -1;
-	}
-	return s->st_index;
-}
-
-/* %alphasort() uses %strcoll(), which means that order can
- * change depending on the locale information.
- */
-static int microsort(const struct dirent** a, const struct dirent** b)
-{
-	return strcmp((*a)->d_name, (*b)->d_name);
-}
 
 /* Fail if the length of the given name is greater than
  * MICROFS_MAXNAMELEN.
@@ -277,54 +178,39 @@ static size_t update_upperbound(struct imgspec* const spec,
 	return inodesz;
 }
 
-static unsigned int walk_directory(struct imgspec* spec, const char* dirname,
-	struct entry** previous)
+static unsigned int walk_directory(struct imgspec* const spec,
+	struct hostprog_path* const path, struct entry** previous)
 {
-	char* path;
-	char* pathend;
-	size_t dirnamelen = strlen(dirname);
-	size_t dirsz = 0;
-	
-	path = malloc(dirnamelen + 1 + MICROFS_MAXNAMELEN + 1);
-	if (!path)
-		error("failed to allocate memory");
-	memcpy(path, dirname, dirnamelen);
-	pathend = path + dirnamelen;
-	*pathend = '/';
-	pathend++;
-	
 	struct dirent** dirlst;
-	int dirlstcount;
-	int dirlstindex;
+	int dirlst_count;
+	int dirlst_index;
 	
-	dirlstcount = scandir(dirname, &dirlst, NULL, microsort);
-	if (dirlstcount < 0)
-		error("failed to read \"%s\": %s", dirname, strerror(errno));
+	size_t dir_sz = 0;
+	size_t dir_lvl = hostprog_path_lvls(path);
 	
-	for (dirlstindex = 0; dirlstindex < dirlstcount; dirlstindex++) {
-		struct dirent* dent = dirlst[dirlstindex];
+	dirlst_count = scandir(path->p_path, &dirlst, NULL, hostprog_scandirsort);
+	if (dirlst_count < 0)
+		error("failed to read \"%s\": %s", path->p_path, strerror(errno));
+	
+	for (dirlst_index = 0; dirlst_index < dirlst_count; dirlst_index++) {
+		struct dirent* dent = dirlst[dirlst_index];
 		
 		/* Skip "." and ".." directories, just like mkcramfs.
 		 */
-		if (dent->d_name[0] == '.') {
-			if (dent->d_name[1] == '\0')
-				continue;
-			if (dent->d_name[1] == '.') {
-				if (dent->d_name[2] == '\0')
-					continue;
-			}
-		}
+		if (hostprog_path_dotdir(dent->d_name))
+			continue;
 		
-		size_t currnamelen = namelen(dent->d_name);
-		memcpy(pathend, dent->d_name, currnamelen + 1);
+		hostprog_path_dirnamelvl(path, dir_lvl);
+		if (hostprog_path_append(path, dent->d_name) != 0)
+			error("failed to add a filename to the hostprog_path");
 		
 		struct stat st;
-		if (lstat(path, &st) < 0) {
+		if (lstat(path->p_path, &st) < 0) {
 			/* Maybe this should be an error? Files missing in the image
 			 * could possibly seem like an error to the user.
 			 */
-			warning("skipping \"unlstatable\" file \"%s\": %s", path,
-				strerror(errno));
+			warning("skipping \"unlstatable\" file \"%s\": %s",
+				path->p_path, strerror(errno));
 			continue;
 		}
 		
@@ -334,20 +220,20 @@ static unsigned int walk_directory(struct imgspec* spec, const char* dirname,
 			 * 
 			 * This should also possibly be an error.
 			 */
-			if (access(path, R_OK) < 0) {
+			if (access(path->p_path, R_OK) < 0) {
 				warning("skipping unreadable file \"%s\": %s",
-					path, strerror(errno));
+					path->p_path, strerror(errno));
 				continue;
 			}
 			/* Completely empty files seems pretty pointless to include
 			 * in the image.
 			 */
 			if (!st.st_size) {
-				warning("skipping empty file \"%s\"", path);
+				warning("skipping empty file \"%s\"", path->p_path);
 				continue;
 			}
 		} else if (!spec->sp_incsocks && S_ISSOCK(st.st_mode)) {
-			warning("skipping socket \"%s\"", path);
+			warning("skipping socket \"%s\"", path->p_path);
 			continue;
 		}
 		
@@ -357,13 +243,13 @@ static unsigned int walk_directory(struct imgspec* spec, const char* dirname,
 		
 		struct entry* ent = malloc(sizeof(*ent));
 		if (!ent)
-			error("failed to alloc an entry for \"%s\"", path);
+			error("failed to alloc an entry for \"%s\"", path->p_path);
 		
 		memset(ent, 0, sizeof(*ent));
 		
 		ent->e_name = strdup(dent->d_name);
 		if (!ent->e_name)
-			error("failed to copy the entry name for \"%s\"", path);
+			error("failed to copy the entry name for \"%s\"", path->p_path);
 		ent->e_mode = st.st_mode;
 		ent->e_size = st.st_size;
 		ent->e_fd = -1;
@@ -376,14 +262,15 @@ static unsigned int walk_directory(struct imgspec* spec, const char* dirname,
 		} else if (S_ISREG(ent->e_mode) || S_ISLNK(ent->e_mode)) {
 			if (ent->e_size > MICROFS_MAXFILESIZE) {
 				error("\"%s\" is too big, max file size is %llu bytes",
-					path, MICROFS_MAXFILESIZE);
+					path->p_path, MICROFS_MAXFILESIZE);
 			}
-			ent->e_path = strdup(path);
+			ent->e_path = strdup(path->p_path);
 			if (!ent->e_path) {
-				error("failed to copy the entry path for \"%s\"", path);
+				error("failed to copy the entry path for \"%s\"",
+					path->p_path);
 			}
 			if (spec->sp_shareblocks && S_ISREG(ent->e_mode)) {
-				if (entry_stack_push(&spec->sp_regstack, ent) < 0)
+				if (hostprog_stack_push(spec->sp_regstack, ent) < 0)
 					error("failed to push an entry to the regular file stack: %s",
 						strerror(errno));
 			}
@@ -396,18 +283,21 @@ static unsigned int walk_directory(struct imgspec* spec, const char* dirname,
 			error("unexpected file mode encountered");
 		}
 		
-		dirsz += update_upperbound(spec, ent, currnamelen);
+		/* %namelen() could actually fail here if the d_name is too
+		 * long, but that will terminate the program, so that is fine.
+		 */
+		dir_sz += update_upperbound(spec, ent, namelen(dent->d_name));
 		
-		message(VERBOSITY_1, "+ %s", path);
+		message(VERBOSITY_1, "+ %c %s", nodtype(ent->e_mode), path->p_path);
 		
 		*previous = ent;
 		previous = &ent->e_sibling;
 	}
 	
-	free(path);
 	free(dirlst);
+	hostprog_path_dirnamelvl(path, dir_lvl);
 	
-	return dirsz;
+	return dir_sz;
 }
 
 /* Return zero if the first %len bytes from %begin are all
@@ -503,8 +393,8 @@ static void write_superblock(struct imgspec* const spec, char* base,
 static uoff_t write_metadata(struct imgspec* const spec,
 	char* base, uoff_t offset)
 {
-	struct entry_stack metastack;
-	if (entry_stack_alloc(&metastack, 64, 64))
+	struct hostprog_stack* metastack = NULL;
+	if (hostprog_stack_create(&metastack, 64, 64))
 		error("failed to create the meta stack: %s", strerror(errno));
 	
 	struct entry* ent = spec->sp_root->e_firstchild;
@@ -516,7 +406,7 @@ static uoff_t write_metadata(struct imgspec* const spec,
 	 */
 	
 	for (;;) {
-		size_t dirstart = metastack.st_index;
+		size_t dirstart = metastack->st_index;
 		while (ent) {
 			ent->e_ioffset = offset;
 			struct microfs_inode* inode = (struct microfs_inode*)(base + offset);
@@ -536,34 +426,34 @@ static uoff_t write_metadata(struct imgspec* const spec,
 			offset += inode->i_namelen;
 			
 			if (ent->e_firstchild) {
-				if (entry_stack_push(&metastack, ent) < 0)
+				if (hostprog_stack_push(metastack, ent) < 0)
 					error("failed to push an entry to the meta stack: %s",
 						strerror(errno));
 			}
 			ent = ent->e_sibling;
 		}
 		
-		if (!metastack.st_index)
+		if (!metastack->st_index)
 			break;
 		
 		/* Reverse the order of the stack entries pushed for this
 		 * directory.
 		 */
-		struct entry** lo = metastack.st_slots + dirstart;
-		struct entry** hi = metastack.st_slots + metastack.st_index;
+		struct entry** lo = (struct entry**)metastack->st_slots + dirstart;
+		struct entry** hi = (struct entry**)metastack->st_slots + metastack->st_index;
 		while (lo < --hi) {
 			struct entry* tmp = *lo;
 			*lo++ = *hi;
 			*hi = tmp;
 		}
-		if (entry_stack_pop(&metastack, &ent) < 0)
+		if (hostprog_stack_pop(metastack, &ent) < 0)
 			error("failed to pop an entry off the meta stack: %s",
 				strerror(errno));
 		
 		set_dataoffset(ent, base, offset);
 		ent = ent->e_firstchild;
 	}
-	entry_stack_free(&metastack);
+	hostprog_stack_destroy(metastack);
 	
 	return offset;
 }
@@ -589,7 +479,8 @@ static void load_entry_data(struct entry* const ent)
 				ent->e_path, strerror(errno));
 		}
 	} else {
-		error("failed to load \"%s\": unexpected file mode", ent->e_path);
+		error("failed to load \"%s\": unexpected file mode '%c'",
+			ent->e_path, nodtype(ent->e_mode));
 	}
 }
 
@@ -602,7 +493,8 @@ static void unload_entry_data(struct entry* const ent)
 	} else if (S_ISLNK(ent->e_mode)) {
 		free(ent->e_data);
 	} else {
-		error("well... this should be impossible: unexpected file mode");
+		error("well... this should be impossible:"
+			" unexpected file mode '%c'", nodtype(ent->e_mode));
 	}
 	ent->e_data = NULL;
 }
@@ -638,7 +530,7 @@ static uoff_t pack_data(struct imgspec* const spec, struct entry* ent,
 			if (spec->sp_compresslvl != Z_NO_COMPRESSION && compr_sz >= compr_input) {
 				message(VERBOSITY_2, ">>> data from offset %zu to %zu in \"%s\""
 					" \"compressed\" from %zu bytes to %zu bytes",
-					ent_data - ent->e_data - compr_input, ent_data - ent->e_data,
+					ent_data - ent->e_data, ent_data + compr_input - ent->e_data,
 					ent->e_path, compr_input, compr_sz);
 			}
 			if (blk_data_offset + compr_sz > spec->sp_upperbound) {
@@ -698,16 +590,16 @@ static uoff_t write_data(struct imgspec* const spec, char* base, uoff_t offset)
 
 static void find_duplicates(struct imgspec* const spec)
 {
-	if (entry_stack_size(&spec->sp_regstack) < 2)
+	if (hostprog_stack_size(spec->sp_regstack) < 2)
 		return;
 	
-	qsort(spec->sp_regstack.st_slots, entry_stack_size(&spec->sp_regstack),
-		sizeof(*spec->sp_regstack.st_slots), entryszcmp);
+	qsort(spec->sp_regstack->st_slots, hostprog_stack_size(spec->sp_regstack),
+		sizeof(*spec->sp_regstack->st_slots), entryszcmp);
 	
-	for (int i = 0, j = 1; j < entry_stack_size(&spec->sp_regstack);
+	for (int i = 0, j = 1; j < hostprog_stack_size(spec->sp_regstack);
 			i++, j++) {
-		struct entry* ent_i = spec->sp_regstack.st_slots[i];
-		struct entry* ent_j = spec->sp_regstack.st_slots[j];
+		struct entry* ent_i = (struct entry*)spec->sp_regstack->st_slots[i];
+		struct entry* ent_j = (struct entry*)spec->sp_regstack->st_slots[j];
 		if (ent_i->e_size == ent_j->e_size) {
 			load_entry_data(ent_i);
 			load_entry_data(ent_j);
@@ -768,6 +660,9 @@ static void devtable_modify_entry(struct imgspec* const spec,
 	char* path_dir = strdup(path);
 	char* path_name = strdup(path);
 	
+	if (!path_dir || !path_name)
+		error("failed to duplicate the path: %s", strerror(errno));
+	
 	char* dir = dirname(path_dir);
 	char* name = basename(path_name);
 	
@@ -784,6 +679,8 @@ static void devtable_modify_entry(struct imgspec* const spec,
 		target->e_mode = mode;
 		ENTRY_SET_XID(spec, target, e_uid, uid, MICROFS_IUID_WIDTH);
 		ENTRY_SET_XID(spec, target, e_gid, gid, MICROFS_IGID_WIDTH);
+		message(VERBOSITY_1, "(src:%s) %% %c %s", spec->sp_devtable,
+			nodtype(target->e_mode), path);
 	} else {
 		target = malloc(sizeof(*target));
 		if (!target)
@@ -822,13 +719,16 @@ static void devtable_modify_entry(struct imgspec* const spec,
 		target->e_sibling = curr;
 		target->e_firstchild = NULL;
 		
-		message(VERBOSITY_1, "(src:%s) + %s", spec->sp_devtable, path);
+		message(VERBOSITY_1, "(src:%s) + %c %s", spec->sp_devtable,
+			nodtype(target->e_mode), path);
 	}
 	
 	free(path_name);
 	free(path_dir);
 }
 
+/* Callback for %devtable_parse().
+ */
 static void devtable_process_dentry(struct devtable_dentry* const devt_dent,
 	void* data, const char* file, const char* line, const size_t linenumber)
 {
@@ -847,6 +747,7 @@ static void usage(const char* const exe, FILE* const dest)
 {
 	fprintf(dest,
 		"\nUsage: %s [-%s] dirname outfile\n"
+		"\nexample: %s /boot boot.img\n\n"
 		" -h          print this message (to stdout) and quit\n"
 		" -v          be more verbose\n"
 		" -e          turn warnings into errors\n"
@@ -862,7 +763,7 @@ static void usage(const char* const exe, FILE* const dest)
 		" -D <str>    use the given file as a device table\n"
 		" dirname     root of the directory tree to be compressed\n"
 		" outfile     image output file\n"
-		"\n", exe, MKI_OPTIONS, MICROFS_PADDING,
+		"\n", exe, MKI_OPTIONS, exe, MICROFS_PADDING,
 		MICROFS_MINBLKSZ, MICROFS_MAXBLKSZ);
 	
 	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
@@ -982,7 +883,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	if (spec->sp_usrupperbound % spec->sp_blksz != 0)
 		error("upper bound must be a multiple of the block size");
 	
-	if (entry_stack_alloc(&spec->sp_regstack, 64, 64) < 0)
+	if (hostprog_stack_create(&spec->sp_regstack, 64, 64) < 0)
 		error("failed to create the regular file stack");
 	
 	if (spec->sp_squashperms && spec->sp_devtable) {
@@ -1002,17 +903,26 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	} else
 		error("can not stat \"%s\": %s", spec->sp_rootdir, strerror(errno));
 	
+	struct hostprog_path* path = NULL;
+	if (hostprog_path_create(&path, spec->sp_rootdir,
+			MICROFS_MAXNAMELEN,	MICROFS_MAXNAMELEN) != 0) {
+		error("failed to create the path for the rootdir: %s", strerror(errno));
+	}
+	
 	spec->sp_root->e_mode = st.st_mode;
 	spec->sp_root->e_uid = st.st_uid;
 	spec->sp_root->e_gid = st.st_gid;
-	spec->sp_root->e_size = walk_directory(spec, spec->sp_rootdir,
+	spec->sp_root->e_size = walk_directory(spec, path,
 		&spec->sp_root->e_firstchild);
+	
+	hostprog_path_destroy(path);
 	
 	if (spec->sp_shareblocks)
 		find_duplicates(spec);
 	
 	if (spec->sp_devtable)
-		devtable_parse(devtable_process_dentry, spec, spec->sp_devtable);
+		devtable_parse(devtable_process_dentry, spec,
+			spec->sp_devtable, MICROFS_ISIZEX_WIDTH);
 	
 	if (spec->sp_usrupperbound && spec->sp_upperbound > spec->sp_usrupperbound) {
 		warning("the estimated upper bound %zu is larger than the"
