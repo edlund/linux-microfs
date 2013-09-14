@@ -73,12 +73,11 @@ static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
 		.dt_dev_count = 0
 	};
 	
-/* http://man7.org/linux/man-pages/man3/scanf.3.html#NOTES
+/* Mute the warning about the "m"-modifier not being part
+ * of the C11 standard.
  */
-#ifndef __GNUC__
-#error "the sscanf \"m\"-modifier extension from glibc is required"
-#endif
-	
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat"
 	if (sscanf(line, "%ms %c %lo %lu %lu %lu %lu %lu %lu %lu",
 			&devt_ent.dt_path, &devt_ent.dt_type, &devt_ent.dt_mode,
 			&devt_ent.dt_uid, &devt_ent.dt_gid,
@@ -88,6 +87,8 @@ static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
 		error("failed to read the device table entry \"%s\" at line %zu: %s",
 			line, linenumber, strerror(errno));
 	}
+#pragma GCC diagnostic pop
+	
 	devt_ent.dt_pathlen = strlen(devt_ent.dt_path);
 	if (devt_ent.dt_pathlen == 0) {
 		error("entry path not properly parsed, giving up at line %zu",

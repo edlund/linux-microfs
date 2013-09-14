@@ -358,8 +358,8 @@ static int microfs_readpage(struct file* file, struct page* page)
 			page->index * (PAGE_CACHE_SIZE >> sbi->si_blkshift):
 			page->index / (sbi->si_blksz / PAGE_CACHE_SIZE);
 		
-		__u32 blk_data_offset;
-		__u32 blk_data_length;
+		__u32 blk_data_offset = 0;
+		__u32 blk_data_length = 0;
 		
 		pr_spam("microfs_readpage: page->index=%lu, blk_ptrs=%u\n",
 			page->index, blk_ptrs);
