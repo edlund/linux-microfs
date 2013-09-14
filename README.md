@@ -58,13 +58,14 @@ system which can compile the Linux kernel. Adding to the requirements
 implied by this assumption microfs will also need the following
 things in order to compile successfully:
 
- * gcc (>=4.4), http://gcc.gnu.org/
+ * gcc (>=4.7), http://gcc.gnu.org/
  * GNU make (>=3.81), http://www.gnu.org/software/make/
  * check unit test framework (>=0.9.8), http://check.sourceforge.net/
  * zlib (>=1.2.7), http://www.zlib.net/
  * python (>=2.7), http://www.python.org/
  * perl5 (>=v5.14), http://www.perl.org/
  * cramfs-tools (>=1.1), http://sourceforge.net/projects/cramfs/ (opt)
+ * squashfs-tools (>=4.2), http://squashfs.sourceforge.net/ (opt)
  * inotify-tools (>=3.14), https://github.com/rvoicilas/inotify-tools (opt)
  * tmpfs (>=3.8.0), https://www.kernel.org/ (opt)
 
@@ -72,7 +73,7 @@ Once the build environment is set up it is sufficient to run
 
     $ make
 
-from the root source directory in order to build microfs and the
+from the root source directory in order to build the lkm and the
 hostprogs.
 
 Use the make command line argument `DEBUG=1` or the combination

@@ -32,7 +32,7 @@ HOST_EXTRACFLAGS += \
 	-Wall \
 	-Wextra \
 	-pedantic \
-	-std=c99 \
+	-std=c11 \
 	-D_GNU_SOURCE \
 	-ggdb
 

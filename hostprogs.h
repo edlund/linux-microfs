@@ -21,9 +21,9 @@
 
 #if ( \
 	!defined(__STDC__) || __STDC__ == 0 || \
-	!defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901L \
+	!defined(__STDC_VERSION__) || __STDC_VERSION__ < 201112L \
 )
-#error "An ISO C99 compiler and preprocessor is required."
+#error "An ISO C11 compiler and preprocessor is required."
 #endif
 
 #include <ctype.h>

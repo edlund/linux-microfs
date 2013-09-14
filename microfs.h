@@ -19,6 +19,19 @@
 #ifndef __MICROFS_H__
 #define __MICROFS_H__
 
+#ifdef __GNUC__
+#define GCC_VERSION ( \
+	__GNUC__ * 10000 \
+	+ __GNUC_MINOR__ * 100 \
+	+ __GNUC_PATCHLEVEL__ \
+)
+#else
+#define GCC_VERSION 0
+#endif
+#if GCC_VERSION < 40700
+#warning "unsupported compiler - here be dragons"
+#endif
+
 #ifdef __KERNEL__
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #endif
