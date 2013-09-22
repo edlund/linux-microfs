@@ -141,6 +141,11 @@ static inline int microfs_ispow2(const __u64 n)
 #define MICROFS_MAXFILESIZE \
 	((1ULL << MICROFS_ISIZEX_WIDTH) - 1)
 
+/* The maximum size of the metadata stored by a directory.
+ */
+#define MICROFS_MAXDIRSIZE \
+	MICROFS_MAXFILESIZE
+
 /* %microfs_sb.s_size determines the upper limit but with a
  * small twist: if %microfs_sb.s_size is set to zero, then
  * the actual image size is 2^32 bytes.
