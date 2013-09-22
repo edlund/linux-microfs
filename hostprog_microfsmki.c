@@ -294,6 +294,16 @@ static unsigned int walk_directory(struct imgspec* const spec,
 	free(dirlst);
 	hostprog_path_dirnamelvl(path, dir_lvl);
 	
+	/* This should never happen, but if it ever does, it is
+	 * clearly an error.
+	 */
+	if (dir_sz > MICROFS_MAXDIRSIZE) {
+		error("achievement unlocked: the directory size for \"%s\""
+			" is %zu bytes, the maximum supported size is %llu bytes"
+			" - this is impressive in a very scary way",
+			path->p_path, dir_sz, MICROFS_MAXDIRSIZE);
+	}
+	
 	return dir_sz;
 }
 

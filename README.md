@@ -106,9 +106,6 @@ A small list of mixed TODOs, FIXMEs, WTFs and the sort.
    not an issue since most workstations have plenty of RAM. It
    is however possible that the memory requirement is unreasonable,
    if so, it should be possible to rewrite them.
- * Directories can only contain a limited amount of dentries
-   (as dictated by by `microfs_inode`.`size_(l|h)`), but this
-   is not properly checked for overflow by `microfsmki` yet.
  * Fix `make install`, write `make uninstall`.
 
 ## Ideas for possible future development
