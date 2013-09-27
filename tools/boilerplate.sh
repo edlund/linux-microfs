@@ -59,6 +59,8 @@ declare -r _EXIT_CMD_0=0
 declare -r _EXIT_CMD_1=1
 declare -r _EXIT_CMD_ANY=2
 
+_verbose_atexit=0
+
 _err_trapped=0
 _err_ignored=0
 
@@ -97,7 +99,9 @@ _trap_EXIT() {
 			|| ( $_err_trapped == 0 && $type == $_EXIT_CMD_0 ) \
 			|| ( $_err_trapped == 1 && $type == $_EXIT_CMD_1 ) \
 		)) ; then
-			echo "${cmd}"
+			if (( $_verbose_atexit == 1 || $_err_trapped == 1 )) ; then
+				echo "${cmd}"
+			fi
 			eval "${cmd}"
 		fi
 	done
@@ -112,7 +116,7 @@ untrap_ERR() {
 }
 
 _trap_ERR() {
-	if [ $_err_ignored -eq 0 ] ; then
+	if (( $_err_ignored == 0 )) ; then
 		local line_num=$1
 		local exit_code=$2
 		local failed_command=$_prev_command
