@@ -91,14 +91,6 @@ enum {
 		} \
 	} while (0)
 
-extern int hostprog_werror;
-extern int hostprog_verbosity;
-
-/* %alphasort() uses %strcoll(), which means that order can
- * change depending on the locale information.
- */
-int hostprog_scandirsort(const struct dirent** a, const struct dirent** b);
-
 static inline char nodtype(const mode_t mode)
 {
 	switch (mode & S_IFMT) {
@@ -121,6 +113,18 @@ static inline char nodtype(const mode_t mode)
 	}
 }
 
+/* A naive implementation of the Fisher-Yates(-Knuth) shuffle.
+ */
+int fykshuffle(void** slots, size_t length);
+
+extern int hostprog_werror;
+extern int hostprog_verbosity;
+
+/* %alphasort() uses %strcoll(), which means that order can
+ * change depending on the locale information.
+ */
+int hostprog_scandirsort(const struct dirent** a, const struct dirent** b);
+
 /* A simplistic stack implementation.
  */
 struct hostprog_stack {
@@ -138,6 +142,9 @@ struct hostprog_stack {
  * a wrapper structure.
  */
 typedef ptrdiff_t hostprog_stack_int_t;
+
+#define HOSTPROG_STACK_INT_T_MAX ((hostprog_stack_int_t)(~0ULL >> 1))
+#define HOSTPROG_STACK_INT_T_MIN (-HOSTPROG_STACK_INT_T_MAX - 1)
 
 int hostprog_stack_create(struct hostprog_stack** const s,
 	const size_t size, const size_t growth);

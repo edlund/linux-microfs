@@ -18,6 +18,23 @@
 
 #include "hostprogs.h"
 
+int fykshuffle(void** slots, const size_t length)
+{
+	if (length > RAND_MAX) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (length > 0) {
+		for (size_t i = length - 1; i > 0; i--) {
+			size_t n = rand() % (i + 1);
+			void* tmp = slots[i];
+			slots[i] = slots[n];
+			slots[n] = tmp;
+		}
+	}
+	return 0;
+}
+
 int hostprog_werror = 0;
 int hostprog_verbosity = 0;
 
