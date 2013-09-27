@@ -110,8 +110,9 @@ def create_files(directories, size_budget, max_file_size,
 			maximum = max_file_size if max_file_size < dir_budget else dir_budget
 			file_size = random.randint(0, maximum)
 			dir_budget -= file_size
+			existing_paths = directories + file_paths
 			file_path = os.path.join(dir_name, get_name())
-			while file_path in file_paths:
+			while file_path in existing_paths:
 				file_path = os.path.join(dir_name, get_name())
 			file_paths.append(file_path)
 			file_content = generate_bytes(file_size)
