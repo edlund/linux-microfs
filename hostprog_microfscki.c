@@ -30,7 +30,12 @@
 
 /* getopt() args, see usage().
  */
-#define CKI_OPTIONS "hvqeMOUx:"
+#define CKI_OPTIONS "hvqePMOUx:"
+
+/* Notice to print when issuing pedantic warnings.
+ */
+#define CKI_PEDANTIC \
+	"(pedantic, disable with -P) "
 
 /* Description of an image.
  */
@@ -57,6 +62,12 @@ struct imgdesc {
 	size_t de_blksz;
 	/* Image block shift. */
 	size_t de_blkshift;
+	/* Size of the image metadata (padding + sb + inodes/dentries). */
+	size_t de_metadatasz;
+	/* Size of the image data (pointers + blocks). */
+	size_t de_datasz;
+	/* Number of found inodes/dentries. */
+	size_t de_inodes;
 	/* Quick access to the superblock. */
 	struct microfs_sb* de_sb;
 	/* zlib stream. */
@@ -69,6 +80,8 @@ struct imgdesc {
 	int de_chownership;
 	/* Change a/m time to match the image when extracting. */
 	int de_chutime;
+	/* Enable pedantic warnings. */
+	int de_pedantic;
 };
 
 static void usage(const char* const exe, FILE* const dest)
@@ -80,6 +93,7 @@ static void usage(const char* const exe, FILE* const dest)
 		" -v          be verbose\n"
 		" -q          only check the superblock and the CRC32 checksum\n"
 		" -e          turn warnings into errors\n"
+		" -P          do NOT generate pedantic warnings\n"
 		" -M          do NOT set the mode to match the image when extracting\n"
 		" -O          do NOT set the ownership to match the image when extracting\n"
 		" -U          do NOT set the utime to match the image when extracting\n"
@@ -105,6 +119,7 @@ static struct imgdesc* create_imgdesc(int argc, char* argv[])
 	desc->de_chmode = 1;
 	desc->de_chownership = 1;
 	desc->de_chutime = 1;
+	desc->de_pedantic = 1;
 	
 	int option;
 	while ((option = getopt(argc, argv, CKI_OPTIONS)) != EOF) {
@@ -120,6 +135,9 @@ static struct imgdesc* create_imgdesc(int argc, char* argv[])
 				break;
 			case 'e':
 				hostprog_werror = 1;
+				break;
+			case 'P':
+				desc->de_pedantic = 0;
 				break;
 			case 'M':
 				desc->de_chmode = 0;
@@ -168,6 +186,8 @@ static struct imgdesc* create_imgdesc(int argc, char* argv[])
 	
 	if (desc->de_outersz < MICROFS_MAXBLKSZ)
 		error("the given file/dev is too small to contain a microfs image");
+	if (desc->de_outersz > MICROFS_MAXIMGSIZE)
+		warning("the given file/dev is bigger than the max image size");
 	
 	desc->de_fd = open(desc->de_infile, O_RDONLY);
 	if (desc->de_fd < 0)
@@ -196,9 +216,10 @@ sb_retry:
 		error("bad superblock signature");
 	}
 	
-	if (__le32_to_cpu(desc->de_sb->s_size) > desc->de_outersz) {
-		error("superblock size > image outer size (s_size=%ul, de_outersz=%zu)",
-			__le32_to_cpu(desc->de_sb->s_size), desc->de_outersz);
+	desc->de_innersz = __le32_to_cpu(desc->de_sb->s_size);
+	if (desc->de_innersz > desc->de_outersz) {
+		error("superblock size > image outer size: s_size=%zu, de_outersz=%zu",
+			desc->de_innersz, desc->de_outersz);
 	}
 	
 	if (sb_unsupportedflags(desc->de_sb)) {
@@ -218,6 +239,8 @@ sb_retry:
 	if (invalid_offset) {
 		error("invalid root offset value");
 	}
+	
+	desc->de_metadatasz = expected_root_offset;
 	
 	desc->de_blkshift = __le16_to_cpu(desc->de_sb->s_blkshift);
 	desc->de_blksz = 1 << desc->de_blkshift;
@@ -279,6 +302,8 @@ static void ck_compression(struct imgdesc* const desc,
 	uoff_t blk_data_offset = __le32_to_cpu(inode->i_offset)
 		+ blk_ptrs * blk_ptr_length;
 	
+	desc->de_datasz += (blk_data_offset - blk_ptr_offset);
+	
 	do {
 		checked = 0;
 		blk_data_length = __le32_to_cpu(*(__le32*)(desc->de_image
@@ -329,6 +354,8 @@ static void ck_compression(struct imgdesc* const desc,
 			checked = desc->de_zstream.total_out;
 			blk_data_offset += blk_data_length;
 			inode_data_offset += desc->de_zstream.total_out;
+			
+			desc->de_datasz += blk_data_length;
 		}
 		
 		blk_nr += 1;
@@ -448,6 +475,10 @@ static void ck_nod(struct imgdesc* const desc,
 			error("socket \"%s\" has non-zero size at 0x%x",
 				path->p_path + desc->de_extractdirlen, (__u32)offset);
 		}
+		if (desc->de_pedantic) {
+			warning(CKI_PEDANTIC "socket \"%s\" present at 0x%x",
+				path->p_path + desc->de_extractdirlen, (__u32)offset);
+		}
 	} else {
 		error("unsupported mode for \"%s\" at 0x%x",
 			path->p_path + desc->de_extractdirlen, (__u32)offset);
@@ -549,7 +580,7 @@ static void ck_dir(struct imgdesc* const desc,
 		
 		ck_name(name, namelen, offset);
 		if (hostprog_path_append(path, name) < 0)
-			error("failed to add a filename to the hostprog_path");
+			error("failed to add \"%s\" to the path", name);
 		
 		mode_t mode = __le16_to_cpu(dentry->i_mode);
 		uoff_t next = sizeof(*dentry) + namelen;
@@ -563,6 +594,12 @@ static void ck_dir(struct imgdesc* const desc,
 		} else if (S_ISLNK(mode)) {
 			ck_symlink(desc, dentry, offset, next, path);
 		} else if (S_ISDIR(mode)) {
+			__u32 dentry_offset = __le32_to_cpu(dentry->i_offset);
+			if (dentry_offset && dentry_offset < offset + next) {
+				error("directory \"%s\" at 0x%x has an unexpected offset: 0x%x"
+					" - it was expected to be >= 0x%x",
+					name, (__u32)offset, dentry_offset, (__u32)(offset + next));
+			}
 			if (desc->de_extractdir && mkdir(path->p_path, mode) < 0) {
 				if (errno != EEXIST) {
 					error("failed to create directory \"%s\": %s",
@@ -578,11 +615,34 @@ static void ck_dir(struct imgdesc* const desc,
 		
 		offset += next;
 		dir_offset += next;
+		desc->de_metadatasz += next;
+		
+		desc->de_inodes++;
 		
 		hostprog_path_dirnamelvl(path, dir_lvl);
 	}
 	
 	free(namebuf);
+}
+
+static void ck_desc(struct imgdesc* const desc)
+{
+	size_t de_files = desc->de_inodes;
+	size_t sb_files = __le16_to_cpu(desc->de_sb->s_files);
+	if (de_files != sb_files) {
+		error("file count mismatch: ck=%zu, sb=%zu",
+			de_files, sb_files);
+	}
+	size_t innersz = sz_blkceil(desc->de_metadatasz
+		+ desc->de_datasz, MICROFS_MAXBLKSZ);
+	if (desc->de_innersz != innersz) {
+		error("inner size != superblock size:"
+			" de_innersz=%zu, (de_metadatasz+de_datasz)=%zu",
+			desc->de_innersz, innersz);
+	}
+	message(VERBOSITY_0, "number of inodes: %zu", de_files);
+	message(VERBOSITY_0, "metadata size: %zu bytes", desc->de_metadatasz);
+	message(VERBOSITY_0, "data size: %zu bytes", desc->de_datasz);
 }
 
 int main(int argc, char* argv[])
@@ -610,6 +670,7 @@ int main(int argc, char* argv[])
 				error("failed to create the extract dir: %s", strerror(errno));
 		}
 		ck_dir(desc, &desc->de_sb->s_root, path);
+		ck_desc(desc);
 	}
 	
 	if (munmap(desc->de_image, desc->de_outersz) < 0)
