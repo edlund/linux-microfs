@@ -23,7 +23,7 @@ script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
 source "${script_dir}/tools/boilerplate.sh"
 
-conf_tempmnt="size=768M,nr_inodes=10k,mode=0755"
+conf_tempmnt="size=768M,nr_inodes=32k,mode=0755"
 conf_notempmnt=0
 options="Mm:"
 while getopts $options option
@@ -134,6 +134,7 @@ done
 if [ "${#src_cmds[@]}" == 0 ] ; then
 	src_cmds=(
 		"${script_dir}/tools/mkemptydir.sh"
+		"${script_dir}/tools/mkhuskdir.sh"
 		"${script_dir}/tools/mklndir.sh"
 		"${script_dir}/tools/mkmbdentdir.sh"
 		"${script_dir}/tools/mkholedir.py"
