@@ -97,7 +97,7 @@ static inline void* __microfs_read_dataptr(struct super_block* sb,
 		" i=%u, j=%u\n", offset, length, i, j);
 	
 	for (; i < j; ++i) {
-		if (IS_ERR(buf->rb_pages[i])) {
+		if (unlikely(IS_ERR(buf->rb_pages[i]))) {
 			pr_err("__microfs_read_dataptr:"
 					" I/O error (%ld) at page %d from offset 0x%x\n",
 				PTR_ERR(buf->rb_pages[i]), i, buf->rb_offset);
