@@ -23,7 +23,7 @@ CFLAGS += \
 	-D_GNU_SOURCE \
 	-ggdb
 
-all: devtck devtmk
+all: devtck devtmk frd
 
 devtck: devtck.c ../hostprogs.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
@@ -31,6 +31,10 @@ devtck: devtck.c ../hostprogs.o
 devtmk: devtmk.c ../hostprogs.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
+frd: frd.c ../hostprogs.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
 clean:
 	rm -f devtck
 	rm -f devtmk
+	rm -f frd
