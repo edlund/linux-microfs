@@ -97,8 +97,6 @@ A small list of mixed TODOs, FIXMEs, WTFs and the sort.
  * Directories are structured and read just like they are in cramfs.
    This is probably a good thing, but no thought or effort at all
    has been put into investigating if that is true (so far).
- * Special files are not handled terribly well, only regular files
-   and directories are well tested and supported at the moment.
  * `microfsmki` and `microfscki` both require high amount of RAM
    available since they both use mmap() to map the whole image
    they are working on (the reason being; it is a solution which
