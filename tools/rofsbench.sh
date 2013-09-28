@@ -132,10 +132,9 @@ filesystems[squashfs]="mksquashfs ${mkopts_squashfs}"
 
 for filesystem in "${!filesystems[@]}" ; do
 	echo "$0: ${filesystem}"
-	img_name="${filesystem}-${src_name}.img"
-	img_file="${work_dir}/${img_name}"
-	
 	img_hostprog="${filesystems[$filesystem]}"
+	img_name="${filesystem}-${img_hostprog//[^-a-zA-Z0-9]/-}-${src_name}.img"
+	img_file="${work_dir}/${img_name}"
 	img_cmd="${img_hostprog} \"${src_dir}\" \"${img_file}\""
 	
 	if [ ! -f "${img_file}" ] ; then
