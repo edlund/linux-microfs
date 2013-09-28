@@ -273,9 +273,19 @@ sb_retry:
 		pr_devel("%zu bytes allocated for %s\n", Sz, #Buf); \
 	} while (0)
 	
-	setup_rdbuf(sbi->si_read.rd_databuf, mount_opts.mo_databufsz, err_rd_databuf);
-	setup_rdbuf(sbi->si_read.rd_blkptrbuf, mount_opts.mo_blkptrbufsz, err_rd_blkptrbuf);
-	setup_rdbuf(sbi->si_read.rd_dentbuf, mount_opts.mo_dentbufsz, err_rd_dentbuf);
+	setup_rdbuf(sbi->si_read.rd_databuf,
+		mount_opts.mo_databufsz, err_rd_databuf);
+	setup_rdbuf(sbi->si_read.rd_blkptrbuf,
+		mount_opts.mo_blkptrbufsz, err_rd_blkptrbuf);
+	setup_rdbuf(sbi->si_read.rd_dentbuf,
+		mount_opts.mo_dentbufsz, err_rd_dentbuf);
+	
+	sbi->si_read.rd_rbs[MICROFS_READER_RB_DATA] = &sbi->si_read
+		.rd_databuf;
+	sbi->si_read.rd_rbs[MICROFS_READER_RB_BLKPTR] = &sbi->si_read
+		.rd_blkptrbuf;
+	sbi->si_read.rd_rbs[MICROFS_READER_RB_DENT] = &sbi->si_read
+		.rd_dentbuf;
 	
 	if (sbi->si_blksz > PAGE_CACHE_SIZE) {
 		sbi->si_read.rd_inflatebuf.ib_offset = (1UL << 32) - 1;

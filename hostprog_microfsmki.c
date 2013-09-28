@@ -883,7 +883,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	/* The block size should now be correctly set, which means
 	 * that the block left shift can be calculated.
 	 */
-	__u16 blksz = spec->sp_blksz;
+	size_t blksz = spec->sp_blksz;
 	while ((blksz >>= 1) > 0)
 		spec->sp_blkshift++;
 	

@@ -241,7 +241,7 @@ devtable_simple="${devtable_simple[@]}"
 devtable_mount "${devtable_simple_cmd}" "${devtable_simple}"
 devtable_mount "${devtable_host_cmd}" "${devtable_host}"
 
-# Try every compression option with every block size and
+# Try every compression option with different block sizes and
 # try that with and without padding.
 compression_options=(
 	"-c none"
@@ -257,6 +257,8 @@ blocksz_options=(
 	"-b 8192"
 	"-b 16384"
 	"-b 32768"
+	"-b 131072"
+	"-b 1048576"
 )
 base_options=("${compression_options[@]/%/ -v}")
 all_options=()

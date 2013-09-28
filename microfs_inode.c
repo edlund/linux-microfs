@@ -140,15 +140,21 @@ void* __microfs_read(struct super_block* sb,
 	
 	/* Is this a cache hit?
 	 */
-	if (offset >= destbuf->rb_offset) {
-		buf_offset = offset - destbuf->rb_offset;
-		if (buf_offset + length <= destbuf->rb_size) {
-			pr_devel_once("__microfs_read: first cache hit\n");
-			return __microfs_read_dataptr(sb, destbuf, buf_offset, length);
+	for (i = 0; i < MICROFS_READER_RBMAX; ++i) {
+		struct microfs_read_buffer* rdbuf = MICROFS_SB(sb)->si_read.rd_rbs[i];
+		if (offset >= rdbuf->rb_offset) {
+			buf_offset = offset - rdbuf->rb_offset;
+			if (buf_offset + length <= rdbuf->rb_size) {
+				pr_devel_once("__microfs_read: first cache hit\n");
+				if (rdbuf != destbuf) {
+					pr_devel_once("__microfs_read: first cache share\n");
+				}
+				return __microfs_read_dataptr(sb, rdbuf, buf_offset, length);
+			}
 		}
 	}
 	
-	/* Nope.
+	/* Nope, the data must be read from the image.
 	 */
 	pr_devel_once("__microfs_read: first cache miss\n");
 	

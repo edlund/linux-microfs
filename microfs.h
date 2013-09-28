@@ -110,12 +110,11 @@ static inline int microfs_ispow2(const __u64 n)
  */
 #define MICROFS_PADDING 512
 
-/* Block size limits, the max size is dictated by zlib (a 32k
- * LZ77 window).
+/* Block size limits.
  */
 #define MICROFS_MINBLKSZ_SHIFT 9
 #define MICROFS_MINBLKSZ (1 << MICROFS_MINBLKSZ_SHIFT)
-#define MICROFS_MAXBLKSZ_SHIFT 15
+#define MICROFS_MAXBLKSZ_SHIFT 20
 #define MICROFS_MAXBLKSZ (1 << MICROFS_MAXBLKSZ_SHIFT)
 
 /* "Bitfield" widths in %microfs_inode.
@@ -280,6 +279,13 @@ struct microfs_inflate_buffer {
 	__u32 ib_offset;
 };
 
+enum {
+	MICROFS_READER_RB_DATA = 0,
+	MICROFS_READER_RB_BLKPTR = 1,
+	MICROFS_READER_RB_DENT = 2,
+	MICROFS_READER_RBMAX = 3
+};
+
 /* Collect what is needed to store the result from reading
  * an image (in a somewhat shaky abstraction).
  * 
@@ -304,6 +310,8 @@ struct microfs_reader {
 	struct microfs_read_buffer rd_blkptrbuf;
 	/* Dentry metadata buffer. */
 	struct microfs_read_buffer rd_dentbuf;
+	/* Pointers to all read buffers for this %microfs_reader. */
+	struct microfs_read_buffer* rd_rbs[MICROFS_READER_RBMAX];
 	/* Block inflate/decompression buffer (when needed). */
 	struct microfs_inflate_buffer rd_inflatebuf;
 	/* Read mutex. */
@@ -328,7 +336,7 @@ struct microfs_sb_info {
 	/* Block size left shift. */
 	__u16 si_blkshift;
 	/* Block size. */
-	__u16 si_blksz;
+	__u32 si_blksz;
 	/* Read backend. */
 	struct microfs_reader si_read;
 };
