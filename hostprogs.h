@@ -192,3 +192,4 @@ int hostprog_path_destroy(struct hostprog_path* const dpath);
 int hostprog_path_dotdir(const char* dname);
 
 #endif
+

@@ -366,3 +366,4 @@ int hostprog_path_dotdir(const char* dname)
 	}
 	return 0;
 }
+

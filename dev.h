@@ -49,3 +49,4 @@ static inline unsigned int minor_n(const unsigned long major,
 }
 
 #endif
+

@@ -47,7 +47,7 @@ in a file.
 ## Linux kernel compatibility
 
 microfs should work well with the latest Ubuntu release (currently
-Ubuntu 13.04 "Raring Ringtail", linux 3.8.0), this is mostly because
+Ubuntu 13.10 "Saucy Salamander", linux 3.11.0), this is mostly because
 the upstream kernel is such a fast moving target that it requires
 extra effort to develop against.
 
@@ -67,7 +67,7 @@ things in order to compile successfully:
  * cramfs-tools (>=1.1), http://sourceforge.net/projects/cramfs/ (opt)
  * squashfs-tools (>=4.2), http://squashfs.sourceforge.net/ (opt)
  * inotify-tools (>=3.14), https://github.com/rvoicilas/inotify-tools (opt)
- * tmpfs (>=3.8.0), https://www.kernel.org/ (opt)
+ * tmpfs (>=3.11.0), https://www.kernel.org/ (opt)
 
 Once the build environment is set up it is sufficient to run
 

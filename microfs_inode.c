@@ -506,8 +506,7 @@ err_io:
 	return NULL;
 }
 
-static int microfs_readdir(struct file* file, void* dirent,
-	filldir_t filldir)
+static int microfs_iterate(struct file* file, struct dir_context* ctx)
 {
 	struct inode* vinode = file_inode(file);
 	struct super_block* sb = vinode->i_sb;
@@ -517,7 +516,7 @@ static int microfs_readdir(struct file* file, void* dirent,
 	
 	int err = 0;
 	
-	__u32 offset = file->f_pos;
+	__u32 offset = ctx->pos;
 	
 	pr_devel_once("microfs_readdir: first call\n");
 	
@@ -579,13 +578,10 @@ static int microfs_readdir(struct file* file, void* dirent,
 		
 		mutex_unlock(&sbi->si_read.rd_mutex);
 		
-		err = filldir(dirent, fillbuf, namelen, offset, ino, mode >> 12);
-		if (unlikely(err)) {
-			pr_err("microfs_readdir: filldir failed: %d\n", err);
+		if (!dir_emit(ctx, fillbuf, namelen, ino, mode >> 12))
 			break;
-		}
 		
-		file->f_pos = offset = next_offset;
+		ctx->pos = offset = next_offset;
 	}
 	
 	kfree(fillbuf);
@@ -606,9 +602,10 @@ static const struct inode_operations microfs_dir_i_ops = {
 static const struct file_operations microfs_dir_i_fops = {
 	.llseek = generic_file_llseek,
 	.read = generic_read_dir,
-	.readdir = microfs_readdir
+	.iterate = microfs_iterate
 };
 
 static const struct address_space_operations microfs_i_a_ops = {
 	.readpage = microfs_readpage
 };
+

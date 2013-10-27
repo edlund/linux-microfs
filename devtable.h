@@ -243,3 +243,4 @@ static inline void devtable_write(FILE* const devtable, const int devbits,
 }
 
 #endif
+

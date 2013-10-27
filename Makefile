@@ -42,7 +42,8 @@ obj-m := microfs.o
 microfs-y := \
 	microfs_super.o \
 	microfs_inode.o \
-	microfs_inflate.o
+	microfs_inflate.o \
+	microfs_compat.o
 
 hostprogs-y := \
 	microfscki \
@@ -60,7 +61,7 @@ test-objs := \
 	test_master.o \
 	test_hostprogs.o \
 	hostprogs.o
-HOSTLOADLIBES_test := -lcheck
+HOSTLOADLIBES_test := -lcheck -lm -lrt -lpthread
 
 always := $(hostprogs-y)
 

@@ -37,3 +37,4 @@ int main(int argc, char* argv[])
 	return failures == 0?
 		EXIT_SUCCESS: EXIT_FAILURE;
 }
+

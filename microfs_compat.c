@@ -16,16 +16,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __MICROFS_COMPAT_H__
-#define __MICROFS_COMPAT_H__
+#include "microfs_compat.h"
 
-/* Small compatibility fixes.
- */
+#include <linux/compiler.h>
 
-#include <linux/version.h>
-
-/* Nothing needed right now. Yay!
- */
-
+#if !defined(GCC_VERSION) || (GCC_VERSION < 40700)
+#warning "unsupported compiler - here be dragons"
 #endif
 
