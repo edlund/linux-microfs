@@ -86,7 +86,7 @@ check: all
 	$(PWD)/test.sh $(CHECKARGS)
 
 # Usage: make remotecheck \
-#     REMOTEHOST=localhost REMOTEPORT=2222 REMOTEUSER=erik \
+#     REMOTEHOST="localhost" REMOTEPORT="2222" REMOTEUSER="erik" \
 #     REMOTEDEST="~" [REMOTEMKARGS="..."]
 # 
 remotecheck: requirevar-REMOTEHOST requirevar-REMOTEPORT \
