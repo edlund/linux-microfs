@@ -128,3 +128,12 @@ _trap_ERR() {
 	fi
 }
 trap '_trap_ERR $LINENO $?' ERR
+
+snore() {
+	echo -n "$3"
+	for i in $(seq 1 $2) ; do
+		sleep "$1"
+		echo -n "."
+	done
+	echo ""
+}

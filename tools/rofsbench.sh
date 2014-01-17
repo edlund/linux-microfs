@@ -20,6 +20,83 @@ script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
 source "${script_dir}/boilerplate.sh"
 
+# max: 2^27 + 2^26 + 2^25 bytes (224 MB), this is an approximate
+# max size for cramfs which leaves a comfortable 32 MB for
+# metadata.
+# 
+# min: 2^20 bytes (1 MB), why not this value?
+max_src_budget=234881024
+min_src_budget=1048576
+
+lim="1"
+blk_sz="4096"
+src_seed="`date +%s`"
+src_budget="${max_src_budget}"
+work_dir=""
+log_file_truncate=1
+log_file_view=1
+
+mkopts_cramfs=""
+mkopts_microfs=""
+mkopts_squashfs="-noI"
+
+options="w:n:b:r:B:m:c:s:TV"
+while getopts $options option
+do
+	case $option in
+		n ) lim=$OPTARG ;;
+		w ) work_dir=$OPTARG ;;
+		r ) src_seed=$OPTARG ;;
+		b ) blk_sz=$OPTARG ;;
+		B ) src_budget=$OPTARG ;;
+		m ) mkopts_microfs=$OPTARG ;;
+		c ) mkopts_cramfs=$OPTARG ;;
+		s ) mkopts_squashfs=$OPTARG ;;
+		T ) log_file_truncate=0 ;;
+		V ) log_file_view=0 ;;
+	esac
+done
+
+if [[ ! -d "${work_dir}" || \
+	! ( "${lim}" =~ ^[0-9]+$ || $lim -le 0 ) || \
+	! ( "${blk_sz}" =~ ^[0-9]+$ ) || \
+	! ( "${src_seed}" =~ ^[0-9]+$ ) || \
+	! ( "${src_budget}" =~ ^[0-9]+$ && \
+		$src_budget -le $max_src_budget && \
+		$src_budget -ge $min_src_budget ) ]] ; then
+	cat <<EOF
+Usage: `basename $0` -w: [-b:r:B:m:c:s:TV]
+
+Run some simple benchmarks using microfs, cramfs and squashfs.
+
+    -w <str>   path to the working directory
+    -n <int>   repeat the benchmark
+    -b <int>   block size to use
+    -r <int>   random seed to give mkrandtree.py
+    -B <int>   size budget to give mkrandtree.py
+               (min=${min_src_budget}, max=${max_src_budget})
+    -m <str>   args to microfsmki
+    -c <str>   args to mkcramfs
+    -s <str>   args to mksquashfs
+    -T         do NOT truncate the log file
+    -V         do NOT generate a view of the log file
+EOF
+	exit 1
+fi
+
+mkoptsblksz() {
+	local cmd=$1
+	local sz=$2
+	if [[ $cmd == *-b* ]] ; then
+		echo "$cmd"
+	else
+		echo "$cmd -b $sz"
+	fi
+}
+
+mkopts_microfs=`mkoptsblksz "${mkopts_microfs}" "${blk_sz}"`
+mkopts_squashfs=`mkoptsblksz "${mkopts_squashfs}" "${blk_sz}"`
+
 echo "$0: `uname -s -r -i` benchmark @ `date "+%Y-%m-%d %H:%M:%S"`"
 echo "$0: root required"
 sudo true
@@ -29,56 +106,6 @@ atexit sudo rmmod microfs
 
 modinfo cramfs > /dev/null
 modinfo squashfs > /dev/null
-
-# max: 2^27 + 2^26 + 2^25 bytes (224 MB), this is an approximate
-# max size for cramfs which leaves a comfortable 32 MB for
-# metadata.
-# 
-# min: 2^20 bytes (1 MB), why not this value?
-max_src_budget=234881024
-min_src_budget=1048576
-
-src_seed="`date +%s`"
-src_budget="${max_src_budget}"
-work_dir=""
-
-mkopts_microfs=""
-mkopts_cramfs=""
-mkopts_squashfs=""
-
-options="w:r:b:m:c:s:"
-while getopts $options option
-do
-	case $option in
-		w ) work_dir=$OPTARG ;;
-		r ) src_seed=$OPTARG ;;
-		b ) src_budget=$OPTARG ;;
-		m ) mkopts_microfs=$OPTARG ;;
-		c ) mkopts_cramfs=$OPTARG ;;
-		s ) mkopts_squashfs=$OPTARG ;;
-	esac
-done
-
-if [[ ! -d "${work_dir}" || \
-	! ( "${src_seed}" =~ ^[0-9]+$ ) || \
-	! ( "${src_budget}" =~ ^[0-9]+$ &&
-		$src_budget -le $max_src_budget &&
-		$src_budget -ge $min_src_budget ) ]] ; then
-	cat <<EOF
-Usage: `basename $0` -w: [-r:b:m:c:s:]
-
-Run some simple benchmarks using microfs, cramfs and squashfs.
-
-    -w <str>   path to the working directory
-    -r <int>   random seed to give mkrandtree.py
-    -b <int>   size budget to give mkrandtree.py
-               (min=${min_src_budget}, max=${max_src_budget})
-    -m <str>   args to microfsmki
-    -c <str>   args to mkcramfs
-    -s <str>   args to mksquashfs
-EOF
-	exit 1
-fi
 
 # Trim any trailing slashes.
 work_dir=`echo "${work_dir}" | sed 's:/*$::'`
@@ -117,49 +144,63 @@ eval "sudo chown -R --reference=\"${HOME}\" \"${tmpfs_dir}\""
 
 PATH="${PATH}:`dirname "${script_dir}"`"
 echo "$0: using PATH=${PATH}"
-echo ""
-echo ""
 
 declare -A filesystems
 
-# Unless overridden using -m, -c and -s, all images will be
-# created with the default options used by the mk hostprog
-# of the filesystem in question. In theory this should allow
-# microfs and cramfs to be compared on acceptably equal terms.
-filesystems[microfs]="microfsmki ${mkopts_microfs}"
-filesystems[cramfs]="mkcramfs ${mkopts_cramfs}"
-filesystems[squashfs]="mksquashfs ${mkopts_squashfs}"
+filesystems[cramfs]="mkcramfs ${mkopts_cramfs} @FILES"
+filesystems[microfs]="microfsmki ${mkopts_microfs} @FILES"
+filesystems[squashfs]="mksquashfs @FILES ${mkopts_squashfs}"
 
-for filesystem in "${!filesystems[@]}" ; do
-	echo "$0: ${filesystem}"
-	img_hostprog="${filesystems[$filesystem]}"
-	img_name="${filesystem}-${img_hostprog//[^-a-zA-Z0-9]/-}-${src_name}.img"
-	img_file="${work_dir}/${img_name}"
-	img_cmd="${img_hostprog} \"${src_dir}\" \"${img_file}\""
-	
-	if [ ! -f "${img_file}" ] ; then
-		echo "$0: running \"${img_cmd}\" to create \"${img_file}\""
-		eval "${img_cmd}"
-	else
-		echo "$0: using existing image \"${img_file}\""
-	fi
-	
-	tmp_img_file="${tmpfs_dir}/${img_name}"
-	cp "${img_file}" "${tmp_img_file}"
-	
-	echo "$0: benchmark run for ${filesystem}"
-	bench_cmd=(
-		"${script_dir}/rofsbenchrun.sh"
-		"-s ${src_seed}"
-		"-t ${filesystem}"
-		"-i \"${tmp_img_file}\""
-	)
-	bench_cmd="${bench_cmd[@]}"
-	echo "$0: ${bench_cmd}"
-	eval "${bench_cmd}"
-	
-	rm -f "${tmp_img_file}"
+log_file="${work_dir}/${src_budget}-${src_seed}-${blk_sz}-all.csv"
+if [[ ! -f "${log_file}" || $log_file_truncate -eq 1 ]] ; then
+	truncate --size=0 "${log_file}"
+fi
+
+for i in $(seq 1 $lim) ; do
+	for filesystem in "${!filesystems[@]}" ; do
+		echo ""
+		echo ""
+		echo "$0: ${filesystem} ---- pass $i"
+		echo ""
+		echo ""
+		img_hostprog="${filesystems[$filesystem]}"
+		img_name="${filesystem}-${img_hostprog//[^-a-zA-Z0-9]/-}-${src_name}.img"
+		img_file="${work_dir}/${img_name}"
+		img_files="\"${src_dir}\" \"${img_file}\""
+		img_cmd="${img_hostprog/@FILES/$img_files}"
+		
+		if [ ! -f "${img_file}" ] ; then
+			echo "$0: running \"${img_cmd}\" to create \"${img_file}\""
+			eval "${img_cmd}"
+		else
+			echo "$0: using existing image \"${img_file}\""
+		fi
+		
+		tmp_img_file="${tmpfs_dir}/${img_name}"
+		cp "${img_file}" "${tmp_img_file}"
+		
+		echo "$0: benchmark run for ${filesystem}"
+		bench_cmd=(
+			"${script_dir}/rofsbenchrun.sh"
+			"-s ${src_seed}"
+			"-t ${filesystem}"
+			"-i \"${tmp_img_file}\""
+			"-l \"${log_file}\""
+		)
+		bench_cmd="${bench_cmd[@]}"
+		echo "$0: ${bench_cmd}"
+		eval "${bench_cmd}"
+		
+		rm -f "${tmp_img_file}"
+	done
+	echo ""
+	snore 1s 10 "$0: pass $i done"
 done
+
+if [ $log_file_view -eq 1 ] ; then
+	echo "$0: benchmark data:"
+	"${script_dir}/rofsbenchview.py" "${log_file}"
+fi
 
 echo "$0: done"
 
