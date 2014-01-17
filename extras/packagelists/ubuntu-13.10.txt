@@ -1,0 +1,16 @@
+build-essential
+check
+cramfsprogs
+dpkg-dev
+fakeroot
+git
+gitk
+inotify-tools
+kernel-package
+linux-source
+openssh-server
+python-all
+python-all-dev
+squashfs-tools
+zlib1g-dbg
+zlib1g-dev
