@@ -22,6 +22,10 @@ ifdef DEBUG_SPAM
 ccflags-y += -DDEBUG_SPAM
 $(info DEBUG_SPAM build)
 endif
+ifdef DEBUG_INODES
+ccflags-y += -DDEBUG_INODES
+$(info DEBUG_INODES build)
+endif
 endif
 
 ifndef INSTALL_HOSTPROG_PATH
@@ -41,8 +45,9 @@ HOST_EXTRACFLAGS += \
 obj-m := microfs.o
 microfs-y := \
 	microfs_super.o \
-	microfs_inode.o \
+	microfs_read.o \
 	microfs_inflate.o \
+	microfs_inode.o \
 	microfs_compat.o
 
 hostprogs-y := \

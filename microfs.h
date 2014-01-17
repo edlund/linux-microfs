@@ -19,10 +19,6 @@
 #ifndef __MICROFS_H__
 #define __MICROFS_H__
 
-#ifdef __KERNEL__
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-#endif
-
 #ifdef __cplusplus
 #define __MICROFS_BEGIN_EXTERN_C extern "C" {
 #define __MICROFS_END_EXTERN_C }
@@ -32,6 +28,10 @@
 #endif
 
 __MICROFS_BEGIN_EXTERN_C
+
+#ifdef __KERNEL__
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#endif
 
 #include <asm/byteorder.h>
 #include <linux/fs.h>
@@ -227,7 +227,7 @@ static inline void i_setsize(struct microfs_inode* const ino, __u32 size)
 }
 
 /* Get the number of block pointers required for a file of
- * %size bytes with the given %blksz and %blkshift.
+ * %size bytes with the given %blksz.
  */
 static inline __u32 i_blkptrs(__u32 sz, __u32 blksz)
 {
@@ -244,67 +244,15 @@ static inline __u32 sz_blkceil(const __u32 size, const __u32 blksz)
 
 #ifdef __KERNEL__
 
-struct microfs_read_buffer {
-	/* %rb_size bytes of data originating from %rb_offset. */
-	char* rb_data;
-	/* Size of %rb_data in bytes. */
-	__u32 rb_size;
-	/* The image offset that %rb_data comes from. */
-	__u32 rb_offset;
-	/* Pointers for the number of pages required to fill %rb_data. */
-	struct page** rb_pages;
-	/* Number of %rb_pages pointers. */
-	__u32 rb_npages;
-};
-
-struct microfs_inflate_buffer {
-	/* An inflated block of file data from the image. */
-	char* ib_data;
-	/* Size in bytes of how much data %ib_datacontains. */
-	__s32 ib_size;
-	/* The image offset which the inflated block comes from. */
-	__u32 ib_offset;
-};
-
-enum {
-	MICROFS_READER_RB_DATA = 0,
-	MICROFS_READER_RB_BLKPTR = 1,
-	MICROFS_READER_RB_DENT = 2,
-	MICROFS_READER_RBMAX = 3
-};
-
-/* Collect what is needed to store the result from reading
- * an image (in a somewhat shaky abstraction).
- * 
- * Read buffers:
- * 
- * - %rd_databuf: Contains data read from the image.
- * 
- * - %rd_blkptrbuf: Contains some, or all (if they all can
- * fit inside the buffer), block pointers of the most recently
- * used file.
- * 
- * - %rd_dentbuf: Contains dentry metadata.
- * 
- * - %rd_inflatebuf: Contains the the uncompressed data of the
- * most recently accessed file data block when the block size
- * is larger than the page size of the host system in question.
+/* Buffer used to hold data read from the image.
  */
-struct microfs_reader {
-	/* "Normal" data buffer. */
-	struct microfs_read_buffer rd_databuf;
-	/* File block pointer metadata buffer. */
-	struct microfs_read_buffer rd_blkptrbuf;
-	/* Dentry metadata buffer. */
-	struct microfs_read_buffer rd_dentbuf;
-	/* Pointers to all read buffers for this %microfs_reader. */
-	struct microfs_read_buffer* rd_rbs[MICROFS_READER_RBMAX];
-	/* Block inflate/decompression buffer (when needed). */
-	struct microfs_inflate_buffer rd_inflatebuf;
-	/* Read mutex. */
-	struct mutex rd_mutex;
-	/* zlib stream. */
-	struct z_stream_s rd_zstream;
+struct microfs_data_buffer {
+	/* The data held by the buffer. */
+	char* d_data;
+	/* Number of bytes allocated for %d_data. */
+	__u32 d_size;
+	/* The offset that the data was read from. */
+	__u32 d_offset;
 };
 
 /* In-memory super block.
@@ -324,12 +272,16 @@ struct microfs_sb_info {
 	__u16 si_blkshift;
 	/* Block size. */
 	__u32 si_blksz;
-	/* Read backend. */
-	struct microfs_reader si_read;
+	/* Metadata buffer. */
+	struct microfs_data_buffer si_metadatabuf;
+	/* Compressed file data buffer. */
+	struct microfs_data_buffer si_filedatabuf;
+	/* Read mutex. */
+	struct mutex si_rdmutex;
+	/* zlib stream. */
+	struct z_stream_s si_rdzstream;
 };
 
-/* Get the microfs in-memory super block.
- */
 static inline struct microfs_sb_info* MICROFS_SB(struct super_block* sb)
 {
 	return sb->s_fs_info;
@@ -344,8 +296,6 @@ static inline unsigned long microfs_get_ino(const struct microfs_inode*
 	return ioffset? ioffset: offset + 1;
 }
 
-/* Get the data offset for the given inode.
- */
 static inline __u32 microfs_get_offset(const struct inode* const inode)
 {
 	return inode->i_ino;
@@ -356,25 +306,41 @@ static inline __u32 microfs_get_offset(const struct inode* const inode)
 struct inode* microfs_get_inode(struct super_block* sb,
 	const struct microfs_inode* const microfs_ino, const __u32 offset);
 
-/* Read data from the image into the given read buffer. A
- * pointer to the data at the given offset is returned.
+typedef int (*microfs_read_blks_consumer)(struct super_block* sb,
+	void* data, struct buffer_head** bhs, __u32 nbhs,
+	__u32 offset, __u32 length);
+
+/* Read PAGE_CACHE_SIZEd blocks from the image. %consumer will
+ * be called once the requested blocks have been read and is
+ * responsible for doing something useful with them.
+ */
+int __microfs_read_blks(struct super_block* sb, struct address_space* mapping,
+	void* destbuf, microfs_read_blks_consumer consumer,
+	__u32 offset, __u32 length);
+
+/* Read data from the image, a pointer to the data at the
+ * given offset is returned.
  */
 void* __microfs_read(struct super_block* sb,
-	struct microfs_read_buffer* destbuf, __u32 offset, __u32 length);
+	__u32 offset, __u32 length);
 
-/* 
+/* Fill the given page with data, if possible by inflating
+ * it directly from the buffer head(s) to the page cache page(s).
  */
-int microfs_inflate_init(struct microfs_reader* rd);
+int __microfs_readpage(struct file* file, struct page* page);
 
-/* 
- */
-void microfs_inflate_end(struct microfs_reader* rd);
+int microfs_inflate_init(struct microfs_sb_info* sbi);
 
-/*
- */
-int __microfs_inflate_block(struct microfs_reader* rd,
-	void* dest, __u32 destlen, void* src, __u32 srclen);
+void microfs_inflate_end(struct microfs_sb_info* sbi);
 
+void __microfs_inflate_reset(struct microfs_sb_info* sbi);
+
+int __microfs_inflate_bhs(struct microfs_sb_info* sbi,
+	struct buffer_head** bhs, __u32 nbhs, __u32* length,
+	__u32* bh, __u32* bh_offset, __u32* inflated, int* zerr);
+
+int __microfs_inflate_more(int err, int zerr, struct z_stream_s* zstrm,
+	__u32 length, int more_avail_out);
 
 #endif
 
@@ -384,11 +350,7 @@ int __microfs_inflate_block(struct microfs_reader* rd,
  *                          all past kernels.
  * 0x00000100 - 0xffffffff: Features which will NOT work
  *                          with all past kernels.
- * 
- * MICROFS_FLAG_*:
- * - HOLES: Support/Use file holes.
  */
-#define MICROFS_FLAG_HOLES            0x00000001
 
 /* Determine if %sb->s_flags specifies unknown flags.
  */

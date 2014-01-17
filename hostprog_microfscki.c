@@ -322,13 +322,7 @@ static void ck_compression(struct imgdesc* const desc,
 				(__u32)inode_data_offset, (__u32)inode_offset,
 				inode_sz);
 		} else if (blk_data_length == 0) {
-			/* File hole.
-			 */
-			checked = unchecked > desc->de_blksz? desc->de_blksz: unchecked;
-			if (inode_data) {
-				memset(inode_data + inode_data_offset, 0, checked);
-			}
-			inode_data_offset += checked;
+			error("zero block data length at 0x%x", (__u32)blk_data_offset);
 		} else {
 			desc->de_zstream.next_in = desc->de_image + blk_data_offset;
 			desc->de_zstream.avail_in = blk_data_length;

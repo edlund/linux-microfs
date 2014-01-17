@@ -23,14 +23,21 @@ script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
 source "${script_dir}/tools/boilerplate.sh"
 
+src_paths=()
+src_cmds=()
+
 conf_tempmnt="size=768M,nr_inodes=32k,mode=0755"
 conf_notempmnt=0
-options="Mm:"
+conf_randomseed="`date +%s`"
+options="Mm:r:p:c:"
 while getopts $options option
 do
 	case $option in
-		m ) conf_tempmnt=$OPTARG ;;
 		M ) conf_notempmnt=1 ;;
+		m ) conf_tempmnt=$OPTARG ;;
+		r ) conf_randomseed=$OPTARG ;;
+		p ) src_paths=("${OPTARG}") ;;
+		c ) src_cmds=("${OPTARG}") ;;
 	esac
 done
 
@@ -41,6 +48,8 @@ sudo true
 _check_start_time=`date +%s`
 
 build_dir=$script_dir
+
+echo "$0: random seed is \"${conf_randomseed}\""
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
 atexit_0 rm -rf "${temp_dir}"
@@ -119,27 +128,15 @@ echo "$0: running lkm and hostprog tests..."
 
 img_srcs=()
 
-src_paths=()
-src_cmds=()
-
-options="p:c:"
-while getopts $options option
-do
-	case $option in
-		p ) src_paths=("${OPTARG}") ;;
-		c ) src_cmds=("${OPTARG}") ;;
-	esac
-done
-
 if [ "${#src_cmds[@]}" == 0 ] ; then
 	src_cmds=(
 		"${script_dir}/tools/mkemptydir.sh"
 		"${script_dir}/tools/mkhuskdir.sh"
 		"${script_dir}/tools/mklndir.sh"
 		"${script_dir}/tools/mkmbdentdir.sh"
-		"${script_dir}/tools/mkholedir.py"
 		"${script_dir}/tools/mkpow2dir.py"
-		"${script_dir}/tools/mkrandtree.py"
+		"${script_dir}/tools/mkholedir.py --random-seed=${conf_randomseed}"
+		"${script_dir}/tools/mkrandtree.py --random-seed=${conf_randomseed}"
 	)
 fi
 
@@ -283,7 +280,7 @@ for img_src in "${img_srcs[@]}" ; do
 		image_cmd="${script_dir}/tools/imgmkckver.sh ${image_params[@]}"
 		echo "$0: running image command \"${image_cmd}\"..."
 		eval "${image_cmd}"
-		echo "$0: ... ok."
+		echo "$0: ... ok (`date +'%H:%M:%S'`)."
 	done
 done
 

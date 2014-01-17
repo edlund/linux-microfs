@@ -80,8 +80,6 @@ struct imgspec {
 	int sp_fd;
 	/* Pad the image? */
 	int sp_pad;
-	/* Support file holes? */
-	int sp_holes;
 	/* Share data between duplicate files? */
 	int sp_shareblocks;
 	/* Include sockets when making an image. */
@@ -165,8 +163,7 @@ static size_t update_upperbound(struct imgspec* const spec,
 		 */
 		size_t blks = i_blkptrs(ent->e_size, spec->sp_blksz);
 		spec->sp_upperbound += (MICROFS_IOFFSET_WIDTH / 8) * blks
-			+ compressBound(spec->sp_blksz) * (blks - 1)
-			+ compressBound(ent->e_size % spec->sp_blksz);
+			+ compressBound(spec->sp_blksz) * blks;
 	}
 	
 	if (++spec->sp_files > MICROFS_MAXFILES)
@@ -307,22 +304,6 @@ static unsigned int walk_directory(struct imgspec* const spec,
 	return dir_sz;
 }
 
-/* Return zero if the first %len bytes from %begin are all
- * NULLs.
- */
-static inline int is_zero(const char* const begin, size_t len)
-{
-	return (len-- == 0 ||
-		(begin[0] == '\0' &&
-		 (len-- == 0 ||
-		  (begin[1] == '\0' &&
-		   (len-- == 0 ||
-		    (begin[2] == '\0' &&
-		     (len-- == 0 ||
-		      (begin[3] == '\0' &&
-		       memcmp(begin, begin + 4, len) == 0))))))));
-}
-
 static inline void set_dataoffset(struct entry* const ent, char* base,
 	const uoff_t offset)
 {
@@ -369,8 +350,6 @@ static void write_superblock(struct imgspec* const spec, char* base,
 	sb->s_ctime = __cpu_to_le32(nowish.tv_sec);
 	
 	__u32 flags = 0;
-	if (spec->sp_holes)
-		flags |= MICROFS_FLAG_HOLES;
 	
 	sb->s_flags = __cpu_to_le32(flags);
 	
@@ -526,33 +505,31 @@ static uoff_t pack_data(struct imgspec* const spec, struct entry* ent,
 		size_t compr_input = ent_sz > spec->sp_blksz? spec->sp_blksz: ent_sz;
 		ent_sz -= compr_input;
 		
-		if (!(spec->sp_holes && is_zero(ent_data, compr_input))) {
-			int err = compress2((Bytef*)spec->sp_compressionbuf, &compr_sz,
-				(Bytef*)ent_data, compr_input, spec->sp_compresslvl);
-			if (err != Z_OK) {
-				error("compression failed for \"%s\": %s", ent->e_path,
-					zError(err));
-			}
-			
-			if (spec->sp_compresslvl != Z_NO_COMPRESSION && compr_sz >= compr_input) {
-				message(VERBOSITY_2, ">>> data from offset %zu to %zu in \"%s\""
-					" \"compressed\" from %zu bytes to %zu bytes",
-					ent_data - ent->e_data, ent_data + compr_input - ent->e_data,
-					ent->e_path, compr_input, compr_sz);
-			}
-			if (blk_data_offset + compr_sz > spec->sp_upperbound) {
-				/* This can only happen if sp_upperbound was truncated to
-				 * MICROFS_MAXIMGSIZE in create_imgspec(), otherwise it is
-				 * guaranteed that the upper bound can fit all data even if
-				 * we get the worst possible compression result for each block
-				 * of data.
-				 */
-				error("out of space, the image can not hold more data");
-			}
-			
-			memcpy(base + blk_data_offset, spec->sp_compressionbuf, compr_sz);
-			blk_data_offset += compr_sz;
+		int err = compress2((Bytef*)spec->sp_compressionbuf, &compr_sz,
+			(Bytef*)ent_data, compr_input, spec->sp_compresslvl);
+		if (err != Z_OK) {
+			error("compression failed for \"%s\": %s", ent->e_path,
+				zError(err));
 		}
+		
+		if (spec->sp_compresslvl != Z_NO_COMPRESSION && compr_sz >= compr_input) {
+			message(VERBOSITY_2, ">>> data from offset %zu to %zu in \"%s\""
+				" \"compressed\" from %zu bytes to %zu bytes",
+				ent_data - ent->e_data, ent_data + compr_input - ent->e_data,
+				ent->e_path, compr_input, compr_sz);
+		}
+		if (blk_data_offset + compr_sz > spec->sp_upperbound) {
+			/* This can only happen if sp_upperbound was truncated to
+			 * MICROFS_MAXIMGSIZE in create_imgspec(), otherwise it is
+			 * guaranteed that the upper bound can fit all data even if
+			 * we get the worst possible compression result for each block
+			 * of data.
+			 */
+			error("out of space, the image can not hold more data");
+		}
+		
+		memcpy(base + blk_data_offset, spec->sp_compressionbuf, compr_sz);
+		blk_data_offset += compr_sz;
 		ent_data += compr_input;
 		
 		__le32* blkptr = (__le32*)(base + blk_ptr_offset);
@@ -761,7 +738,6 @@ static void usage(const char* const exe, FILE* const dest)
 		" -p          pad by %d bytes to make room for boot code\n"
 		" -q          squash permissions (make everything owned by root)\n"
 		" -s          include sockets in the image\n"
-		" -Z          do NOT use real file holes\n"
 		" -S          do NOT eliminate regular file duplicates\n"
 		" -b <int>    desired block size in bytes (power of two; min=%d, max=%d)\n"
 		" -u <int>    artificial upper bound given in bytes\n"
@@ -792,7 +768,6 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	memset(spec->sp_root, 0, sizeof(*spec->sp_root));
 	
 	spec->sp_name = MICROFS_DEFAULTNAME;
-	spec->sp_holes = 1;
 	spec->sp_shareblocks = 1;
 	spec->sp_compresslvl = Z_BEST_COMPRESSION;
 	
@@ -825,9 +800,6 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 				break;
 			case 's':
 				spec->sp_incsocks = 1;
-				break;
-			case 'Z':
-				spec->sp_holes = 0;
 				break;
 			case 'S':
 				spec->sp_shareblocks = 0;
@@ -897,6 +869,10 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 		warning("both -q and -d are set, this might not be a good idea"
 			" - the device table could override some or all permissions");
 	}
+	
+	spec->sp_upperbound = sizeof(struct microfs_sb);
+	if (spec->sp_pad)
+		spec->sp_upperbound += MICROFS_PADDING;
 	
 	if ((argc - optind) != 2)
 		usage(argv[0], stderr);

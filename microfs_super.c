@@ -29,21 +29,15 @@ MODULE_ALIAS_FS("microfs");
 static const struct super_operations microfs_s_ops;
 
 enum {
-	Opt_databufsz,
-	Opt_blkptrbufsz,
-	Opt_dentbufsz
+	Opt_metadatabufsz
 };
 
 static const match_table_t microfs_tokens = {
-	{ Opt_databufsz, "databufsz=%u" },
-	{ Opt_blkptrbufsz, "blkptrbufsz=%u" },
-	{ Opt_dentbufsz, "dentbufsz=%u" },
+	{ Opt_metadatabufsz, "metadatabufsz=%u" }
 };
 
 struct microfs_mount_options {
-	size_t mo_databufsz;
-	size_t mo_blkptrbufsz;
-	size_t mo_dentbufsz;
+	size_t mo_metadatabufsz;
 };
 
 static size_t microfs_select_bufsz(const char* const name, int requested,
@@ -78,27 +72,36 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 		
 		token = match_token(part, microfs_tokens, args);
 		switch (token) {
-			
-#define BUFSZ_OPT(Name) \
-	case Opt_##Name: \
-		if (match_int(&args[0], &option)) \
-			return 0; \
-		mount_opts->mo_##Name = microfs_select_bufsz(#Name, \
-			option, mount_opts->mo_##Name); \
-		break
-			
-			BUFSZ_OPT(databufsz);
-			BUFSZ_OPT(blkptrbufsz);
-			BUFSZ_OPT(dentbufsz);
-			
-#undef BUFSZ_OPT
-			
+			case Opt_metadatabufsz:
+				if (match_int(&args[0], &option))
+					return 0;
+				mount_opts->mo_metadatabufsz = microfs_select_bufsz("metadatabufsz",
+					option, mount_opts->mo_metadatabufsz);
+				break;
 			default:
 				return 0;
 		}
 	}
 	
 	return 1;
+}
+
+static int create_data_buffer(struct microfs_data_buffer* dbuf,
+	__u32 sz, const char* const name)
+{
+	dbuf->d_offset = MICROFS_MAXIMGSIZE - 1;
+	dbuf->d_size = sz;
+	dbuf->d_data = vmalloc(dbuf->d_size);
+	if (!dbuf->d_data) {
+		pr_err("could not allocate data buffer %s\n", name);
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+static void destroy_data_buffer(struct microfs_data_buffer* dbuf)
+{
+	vfree(dbuf->d_data);
 }
 
 static int microfs_fill_super(struct super_block* sb, void* data, int silent)
@@ -127,7 +130,7 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 	}
 	sb->s_fs_info = sbi;
 	
-	mutex_init(&sbi->si_read.rd_mutex);
+	mutex_init(&sbi->si_rdmutex);
 	
 /* As far as I know, this should never happen, but check it
  * anyway, what I do not know could fill a mid-sized space
@@ -235,19 +238,12 @@ sb_retry:
 		goto err_sb;
 	}
 	
-	/* The data buffer must be big enough to fit a block with
-	 * with poor alignment which also "compressed" to its upper
-	 * bound size.
-	 * 
-	 * All buffers must span at least two PAGE_CACHE_SIZE sized
+	/* The metadata buffer must span at least PAGE_CACHE_SIZE sized
 	 * VFS "blocks" so that poor data alignment does not cause oob
 	 * errors (data starting in one VFS block and ending at the
 	 * start of the adjoining block).
 	 */
-	mount_opts.mo_databufsz = sz_blkceil(sbi->si_blksz * 3,
-		PAGE_CACHE_SIZE) + PAGE_CACHE_SIZE;
-	mount_opts.mo_blkptrbufsz = PAGE_CACHE_SIZE * 2;
-	mount_opts.mo_dentbufsz = PAGE_CACHE_SIZE * 2;
+	mount_opts.mo_metadatabufsz = PAGE_CACHE_SIZE * 2;
 	
 	if (!microfs_parse_options(data, sbi, &mount_opts)) {
 		pr_err("failed to parse mount options\n");
@@ -255,57 +251,23 @@ sb_retry:
 		goto err_opts;
 	}
 	
-#define setup_rdbuf(Buf, Sz, Err) \
-	do { \
-		struct microfs_read_buffer* rdbuf = &Buf; \
-		rdbuf->rb_size = Sz; \
-		rdbuf->rb_offset = (1UL << 32) - 1; \
-		rdbuf->rb_data = vmalloc(rdbuf->rb_size); \
-		rdbuf->rb_npages = rdbuf->rb_size / PAGE_CACHE_SIZE; \
-		rdbuf->rb_pages = kmalloc(rdbuf->rb_npages \
-			* sizeof(*rdbuf->rb_pages), GFP_KERNEL); \
-		if (!rdbuf->rb_data || !rdbuf->rb_pages) { \
-			pr_err("could not allocate read buffer %s\n", #Buf); \
-			err = -ENOMEM; \
-			goto Err; \
-		} \
-		rdbuf = NULL; \
-		pr_devel("%zu bytes allocated for %s\n", Sz, #Buf); \
-	} while (0)
+	/* The filedata buffer must be big enough to fit either an
+	 * entire block or a whole page, depending on the used block
+	 * size.
+	 */
+	if ((err = create_data_buffer(&sbi->si_filedatabuf,
+			max(sbi->si_blksz, (__u32)PAGE_CACHE_SIZE), "sbi->si_filedatabuf")) < 0)
+		goto err_filedatabuf;
 	
-	setup_rdbuf(sbi->si_read.rd_databuf,
-		mount_opts.mo_databufsz, err_rd_databuf);
-	setup_rdbuf(sbi->si_read.rd_blkptrbuf,
-		mount_opts.mo_blkptrbufsz, err_rd_blkptrbuf);
-	setup_rdbuf(sbi->si_read.rd_dentbuf,
-		mount_opts.mo_dentbufsz, err_rd_dentbuf);
+	if ((err = create_data_buffer(&sbi->si_metadatabuf,
+			mount_opts.mo_metadatabufsz, "sbi->si_metadatabuf")) < 0)
+		goto err_metadatabuf;
 	
-	sbi->si_read.rd_rbs[MICROFS_READER_RB_DATA] = &sbi->si_read
-		.rd_databuf;
-	sbi->si_read.rd_rbs[MICROFS_READER_RB_BLKPTR] = &sbi->si_read
-		.rd_blkptrbuf;
-	sbi->si_read.rd_rbs[MICROFS_READER_RB_DENT] = &sbi->si_read
-		.rd_dentbuf;
-	
-	if (sbi->si_blksz > PAGE_CACHE_SIZE) {
-		sbi->si_read.rd_inflatebuf.ib_offset = (1UL << 32) - 1;
-		sbi->si_read.rd_inflatebuf.ib_data = vmalloc(sbi->si_blksz);
-		if (!sbi->si_read.rd_inflatebuf.ib_data) {
-			pr_err("could not allocate the inflate buffer\n");
-			err = -ENOMEM;
-			goto err_rd_inflatebuf;
-		}
-		pr_devel("%u bytes allocated for sbi->si_read.rd_inflatebuf.ib_data",
-			sbi->si_blksz);
-	}
-	
-	err = microfs_inflate_init(&sbi->si_read);
-	if (err != 0) {
+	err = microfs_inflate_init(sbi);
+	if (err < 0) {
 		pr_err("failed to init the zlib stream\n");
 		goto err_inflate_init;
 	}
-	
-#undef setup_rdbuf
 	
 	msb = NULL;
 	brelse(bh);
@@ -316,18 +278,11 @@ sb_retry:
 	return 0;
 	
 err_inflate_init:
-	vfree(sbi->si_read.rd_inflatebuf.ib_data);
-err_rd_inflatebuf:
 	/* Fall-through. */
-err_rd_dentbuf:
-	vfree(sbi->si_read.rd_dentbuf.rb_data);
-	kfree(sbi->si_read.rd_dentbuf.rb_pages);
-err_rd_blkptrbuf:
-	vfree(sbi->si_read.rd_blkptrbuf.rb_data);
-	kfree(sbi->si_read.rd_blkptrbuf.rb_pages);
-err_rd_databuf:
-	vfree(sbi->si_read.rd_databuf.rb_data);
-	kfree(sbi->si_read.rd_databuf.rb_pages);
+err_metadatabuf:
+	destroy_data_buffer(&sbi->si_metadatabuf);
+err_filedatabuf:
+	destroy_data_buffer(&sbi->si_filedatabuf);
 err_opts:
 	/* Fall-through. */
 err_sb:
@@ -357,18 +312,10 @@ static int microfs_remount_fs(struct super_block* sb, int* flags, char* data)
 
 static void microfs_put_super(struct super_block* sb)
 {
-	vfree(MICROFS_SB(sb)->si_read.rd_inflatebuf.ib_data);
+	destroy_data_buffer(&MICROFS_SB(sb)->si_filedatabuf);
+	destroy_data_buffer(&MICROFS_SB(sb)->si_metadatabuf);
 	
-	vfree(MICROFS_SB(sb)->si_read.rd_dentbuf.rb_data);
-	kfree(MICROFS_SB(sb)->si_read.rd_dentbuf.rb_pages);
-	
-	vfree(MICROFS_SB(sb)->si_read.rd_blkptrbuf.rb_data);
-	kfree(MICROFS_SB(sb)->si_read.rd_blkptrbuf.rb_pages);
-	
-	vfree(MICROFS_SB(sb)->si_read.rd_databuf.rb_data);
-	kfree(MICROFS_SB(sb)->si_read.rd_databuf.rb_pages);
-	
-	microfs_inflate_end(&MICROFS_SB(sb)->si_read);
+	microfs_inflate_end(MICROFS_SB(sb));
 	
 	kfree(sb->s_fs_info);
 	sb->s_fs_info = NULL;
