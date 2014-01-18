@@ -142,6 +142,9 @@ static inline int microfs_ispow2(const __u64 n)
 #define MICROFS_MAXIMGSIZE \
 	(1ULL << 32)
 
+#define MICROFS_MINIMGSIZE \
+	(1ULL << 12)
+
 /* %microfs_sb.s_files determines the upper limit.
  */
 #define MICROFS_MAXFILES \

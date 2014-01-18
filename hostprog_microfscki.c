@@ -184,7 +184,7 @@ static struct imgdesc* create_imgdesc(int argc, char* argv[])
 		error("not a block dev or regular file \"%s\"", desc->de_infile);
 	}
 	
-	if (desc->de_outersz < MICROFS_MAXBLKSZ)
+	if (desc->de_outersz < MICROFS_MINIMGSIZE)
 		error("the given file/dev is too small to contain a microfs image");
 	if (desc->de_outersz > MICROFS_MAXIMGSIZE)
 		warning("the given file/dev is bigger than the max image size");
@@ -273,7 +273,7 @@ static void ck_crc(struct imgdesc* const desc)
 	desc->de_sb->s_crc = 0;
 	
 	host_crc = crc32(host_crc, (Bytef*)desc->de_image + padding,
-		desc->de_outersz - padding);
+		desc->de_innersz - padding);
 	
 	if (sb_crc != host_crc) {
 		error("CRC mismatch (sb_crc=%x, host_crc=%x)",
@@ -627,8 +627,7 @@ static void ck_desc(struct imgdesc* const desc)
 		error("file count mismatch: ck=%zu, sb=%zu",
 			de_files, sb_files);
 	}
-	size_t innersz = sz_blkceil(desc->de_metadatasz
-		+ desc->de_datasz, MICROFS_MAXBLKSZ);
+	size_t innersz = desc->de_metadatasz + desc->de_datasz;
 	if (desc->de_innersz != innersz) {
 		error("inner size != superblock size:"
 			" de_innersz=%zu, (de_metadatasz+de_datasz)=%zu",

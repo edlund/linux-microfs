@@ -194,7 +194,7 @@ for i in $(seq 1 $lim) ; do
 		rm -f "${tmp_img_file}"
 	done
 	echo ""
-	snore 1s 10 "$0: pass $i done"
+	echo "$0: pass $i done"
 done
 
 if [ $log_file_view -eq 1 ] ; then

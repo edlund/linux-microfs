@@ -100,6 +100,8 @@ struct imgspec {
 	size_t sp_upperbound;
 	/* User requested upper bound. */
 	size_t sp_usrupperbound;
+	/* Pad the total image size to a multiple of this power of 2. */
+	size_t sp_szpad;
 	/* Root entry. */
 	struct entry* sp_root;
 	/* Stack of all regular files, used to find duplicates. */
@@ -727,7 +729,8 @@ static void devtable_process_dentry(struct devtable_dentry* const devt_dent,
 		devt_dent->de_mode, devt_dent->de_dev);
 }
 
-static void usage(const char* const exe, FILE* const dest)
+static void usage(const char* const exe, FILE* const dest,
+	const struct imgspec* const spec)
 {
 	fprintf(dest,
 		"\nUsage: %s [-%s] dirname outfile\n"
@@ -741,22 +744,20 @@ static void usage(const char* const exe, FILE* const dest)
 		" -S          do NOT eliminate regular file duplicates\n"
 		" -b <int>    desired block size in bytes (power of two; min=%d, max=%d)\n"
 		" -u <int>    artificial upper bound given in bytes\n"
+		" -P <int>    pad image size to a multiple of the given power of two (default=%zu)\n"
 		" -n <str>    give the image a name\n"
-		" -c <str>    zlib compression level: none,default,speed,size\n"
+		" -c <str>    zlib compression level: none, default, speed, size\n"
 		" -D <str>    use the given file as a device table\n"
 		" dirname     root of the directory tree to be compressed\n"
 		" outfile     image output file\n"
 		"\n", exe, MKI_OPTIONS, exe, MICROFS_PADDING,
-		MICROFS_MINBLKSZ, MICROFS_MAXBLKSZ);
+		MICROFS_MINBLKSZ, MICROFS_MAXBLKSZ, spec->sp_pagesz);
 	
 	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
 }
 
 static struct imgspec* create_imgspec(int argc, char* argv[])
 {
-	if (argc < 2)
-		usage(argc > 0? argv[0]: "", stderr);
-	
 	struct imgspec* spec = malloc(sizeof(*spec));
 	if (!spec)
 		error("failed to allocate an image spec");
@@ -775,6 +776,10 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	 */
 	spec->sp_pagesz = sysconf(_SC_PAGESIZE);
 	spec->sp_blksz = spec->sp_pagesz;
+	spec->sp_szpad = spec->sp_pagesz;
+	
+	if (argc < 2)
+		usage(argc > 0? argv[0]: "", stderr, spec);
 	
 	/* Check what the user want.
 	 */
@@ -784,7 +789,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 		size_t len;
 		switch (option) {
 			case 'h':
-				usage(argv[0], stdout);
+				usage(argv[0], stdout, spec);
 				break;
 			case 'v':
 				hostprog_verbosity++;
@@ -817,6 +822,11 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 				break;
 			case 'u':
 				opt_strtolx(ull, option, optarg, spec->sp_usrupperbound);
+				break;
+			case 'P':
+				opt_strtolx(ull, option, optarg, spec->sp_szpad);
+				if (!microfs_ispow2(spec->sp_szpad))
+					error("the size padding must be a power of two");
 				break;
 			case 'n':
 				spec->sp_name = optarg;
@@ -875,7 +885,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 		spec->sp_upperbound += MICROFS_PADDING;
 	
 	if ((argc - optind) != 2)
-		usage(argv[0], stderr);
+		usage(argv[0], stderr, spec);
 	spec->sp_rootdir = argv[optind + 0];
 	spec->sp_outfile = argv[optind + 1];
 	
@@ -966,9 +976,9 @@ static void materialize_imgspec(struct imgspec* const spec)
 	offset = write_data(spec, image, offset);
 	
 	const size_t innersz = offset;
-	const size_t outersz = sz_blkceil(offset, MICROFS_MAXBLKSZ);
+	const size_t outersz = sz_blkceil(offset, spec->sp_szpad);
 	
-	write_superblock(spec, image, outersz);
+	write_superblock(spec, image, innersz);
 	
 	if (munmap(image, spec->sp_upperbound) < 0)
 		error("failed to unmap the image: %s", strerror(errno));

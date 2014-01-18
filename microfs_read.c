@@ -84,7 +84,7 @@ static int __microfs_copy_metadata(struct super_block* sb,
 	pr_spam("__microfs_copy_metadata: offset=0x%x, length=%u\n",
 		offset, length);
 	
-	for (i = 0, buf_offset = 0; buf_offset < length;
+	for (i = 0, buf_offset = 0; i < nbhs && buf_offset < length;
 			i += 1, buf_offset += PAGE_CACHE_SIZE) {
 		memcpy(sbi->si_metadatabuf.d_data + buf_offset,
 			bhs[i]->b_data, PAGE_CACHE_SIZE);
