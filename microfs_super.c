@@ -238,10 +238,10 @@ sb_retry:
 		goto err_sb;
 	}
 	
-	/* The metadata buffer must span at least PAGE_CACHE_SIZE sized
-	 * VFS "blocks" so that poor data alignment does not cause oob
-	 * errors (data starting in one VFS block and ending at the
-	 * start of the adjoining block).
+	/* The metadata buffer must span at least two PAGE_CACHE_SIZE
+	 * sized VFS "blocks" so that poor data alignment does not
+	 * cause oob errors (data starting in one VFS block and ending
+	 * at the start of the adjoining block).
 	 */
 	mount_opts.mo_metadatabufsz = PAGE_CACHE_SIZE * 2;
 	
