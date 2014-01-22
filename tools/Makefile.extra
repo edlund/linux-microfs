@@ -23,6 +23,9 @@ CFLAGS += \
 	-D_GNU_SOURCE \
 	-ggdb
 
+LDFLAGS += \
+	-lrt
+
 all: devtck devtmk frd
 
 devtck: devtck.c ../hostprogs.o
