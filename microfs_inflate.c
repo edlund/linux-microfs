@@ -63,7 +63,7 @@ int __microfs_inflate_bhs(struct microfs_sb_info* sbi,
 	do {
 		if (zstrm->avail_in == 0) {
 			pr_spam("__microfs_inflate_bhs: *bh=%u, bhs[*bh]=0x%p\n", *bh, bhs[*bh]);
-			zstrm->avail_in = min(*length, (__u32)(PAGE_CACHE_SIZE - *bh_offset));
+			zstrm->avail_in = min_t(__u32, *length, PAGE_CACHE_SIZE - *bh_offset);
 			zstrm->next_in = bhs[*bh]->b_data + *bh_offset;
 			*bh += 1;
 			*length -= zstrm->avail_in;

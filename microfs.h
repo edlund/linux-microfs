@@ -254,6 +254,8 @@ struct microfs_data_buffer {
 	char* d_data;
 	/* Number of bytes allocated for %d_data. */
 	__u32 d_size;
+	/* Number of bytes of %d_data that is used. */
+	__u32 d_used;
 	/* The offset that the data was read from. */
 	__u32 d_offset;
 };

@@ -84,8 +84,10 @@ static int __microfs_copy_metadata(struct super_block* sb,
 	pr_spam("__microfs_copy_metadata: offset=0x%x, length=%u\n",
 		offset, length);
 	
-	for (i = 0, buf_offset = 0; i < nbhs && buf_offset < length;
+	for (i = 0, buf_offset = 0, sbi->si_metadatabuf.d_used = 0;
+			i < nbhs && buf_offset < length;
 			i += 1, buf_offset += PAGE_CACHE_SIZE) {
+		sbi->si_metadatabuf.d_used += PAGE_CACHE_SIZE;
 		memcpy(sbi->si_metadatabuf.d_data + buf_offset,
 			bhs[i]->b_data, PAGE_CACHE_SIZE);
 	}
@@ -98,6 +100,8 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 	__u32 offset, __u32 length)
 {
 	__u32 inflated = 0;
+	__u32 remaining;
+	__u32 available;
 	__u32 unused;
 	__u32 page;
 	__u32 buf_offset;
@@ -126,6 +130,9 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 		
 		__microfs_inflate_reset(sbi);
 		
+		sbi->si_filedatabuf.d_offset = MICROFS_MAXIMGSIZE - 1;
+		sbi->si_filedatabuf.d_used = 0;
+		
 		zstrm->avail_out = sbi->si_filedatabuf.d_size;
 		zstrm->next_out = sbi->si_filedatabuf.d_data;
 		
@@ -146,24 +153,29 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 		}
 		
 		sbi->si_filedatabuf.d_offset = offset;
+		sbi->si_filedatabuf.d_used = inflated;
+	} else {
+		inflated = sbi->si_filedatabuf.d_used;
 	}
 	
-	for (page = 0, buf_offset = 0; page < rdreq->rr_npages;
+	for (page = 0, buf_offset = 0, remaining = inflated; page < rdreq->rr_npages;
 			page += 1, buf_offset += PAGE_CACHE_SIZE) {
+		available = min_t(__u32, remaining, PAGE_CACHE_SIZE);
+		unused = PAGE_CACHE_SIZE - available;
+		remaining -= available;
+		
 		if (rdreq->rr_pages[page]) {
 			void* page_data = kmap(rdreq->rr_pages[page]);
-			memcpy(page_data, sbi->si_filedatabuf.d_data + buf_offset, PAGE_CACHE_SIZE);
+			pr_spam("__microfs_copy_filedata_2step: buf_offset=%u, remaining=%u\n",
+				buf_offset, remaining);
+			pr_spam("__microfs_copy_filedata_2step: copying %u bytes to page %u\n",
+				available, page);
+			pr_spam("__microfs_copy_filedata_2step: zeroing %u bytes for page %u\n",
+				unused, page);
+			memcpy(page_data, sbi->si_filedatabuf.d_data + buf_offset, available);
+			memset(page_data + available, 0, unused);
 			kunmap(rdreq->rr_pages[page]);
 		}
-	}
-	
-	unused = buf_offset + PAGE_CACHE_SIZE - inflated;
-	if (unused) {
-		void* page_data = kmap(rdreq->rr_pages[rdreq->rr_npages - 1]);
-		pr_spam("__microfs_copy_filedata_direct: zeroing %u bytes for page %u\n",
-			unused, page);
-		memset(page_data + (PAGE_CACHE_SIZE - unused), 0, unused);
-		kunmap(rdreq->rr_pages[rdreq->rr_npages - 1]);
 	}
 	
 err_inflate:
