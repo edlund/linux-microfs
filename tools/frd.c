@@ -16,28 +16,41 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#define _FILE_OFFSET_BITS 64
+
 #include "../microfs.h"
 #include "../hostprogs.h"
 
-#define FRD_OPTIONS "hverRmNs:b:i:"
+#include <sys/prctl.h>
+#include <sys/wait.h> 
+
+#define FRD_OPTIONS "hverRmNls:b:w:i:"
 
 struct readoptions {
 	/* Read file data blocks sequentially. */
 	int ro_seqread;
 	/* Read the given files sequentially. */
 	int ro_seqfiles;
+	/* Fork new children forever. */
+	int ro_infiniteloop;
 	/* srand()-seed. */
 	unsigned int ro_seed;
 	/* Buffer to read data into. */
 	unsigned char* ro_blkbuf;
 	/* Read data in chunks of this size. */
 	size_t ro_blksz;
+	/* Use forked processes to read data simultaneously. */
+	size_t ro_workers;
+	/* PID for the original process. */
+	pid_t ro_parent;
 	/* Files which should be read. */
 	struct hostprog_stack* ro_files;
 	/* File data offsets. */
 	struct hostprog_stack* ro_offsets;
 	/* Callback to handle a single path. */
 	void (*ro_handle)(struct readoptions* const rdopts, const char* path);
+	/* Callback to halt the process. */
+	void (*ro_exit)(int status);
 };
 
 static void handle_stat(struct readoptions* const rdopts, const char* path)
@@ -46,7 +59,7 @@ static void handle_stat(struct readoptions* const rdopts, const char* path)
 	
 	struct stat st;
 	if (stat(path, &st) < 0) {
-		warning("fail to stat \"%s\": %s, it will be skipped",
+		do_warning(rdopts->ro_exit, 1, "fail to stat \"%s\": %s, it will be skipped",
 			path, strerror(errno));
 	} else {
 		message(VERBOSITY_1, " st %c %s", nodtype(st.st_mode), path);
@@ -57,12 +70,14 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 {
 	struct stat st;
 	if (stat(path, &st) < 0) {
-		warning("fail to stat \"%s\": %s, it will be skipped",
+		do_warning(rdopts->ro_exit, 1, "fail to stat \"%s\": %s, it will be skipped",
 			path, strerror(errno));
 	} else if (S_ISREG(st.st_mode) && st.st_size) {
 		int rdfd = open(path, O_RDONLY, 0);
-		if (rdfd < 0)
-			error("failed to open path \"%s\": %s", path, strerror(errno));
+		if (rdfd < 0) {
+			do_error(rdopts->ro_exit, 1, "failed to open path \"%s\": %s",
+				path, strerror(errno));
+		}
 		
 		const hostprog_stack_int_t max = HOSTPROG_STACK_INT_T_MAX;
 		const hostprog_stack_int_t sz = st.st_size;
@@ -71,13 +86,13 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 		hostprog_stack_int_t offset = (blks - 1) * rdopts->ro_blksz;
 		
 		if (offset > max) {
-			error("achievement unlocked: the file \"%s\" is too big,"
+			do_error(rdopts->ro_exit, 1, "achievement unlocked: the file \"%s\" is too big,"
 				" offset=%td, max=%td", path, offset, max);
 		}
 		
 		while (offset >= 0) {
 			if (hostprog_stack_push(rdopts->ro_offsets, offset) < 0) {
-				error("failed to push offset %td to the offset stack: %s",
+				do_error(rdopts->ro_exit, 1, "failed to push offset %td to the offset stack: %s",
 					offset, strerror(errno));
 			}
 			offset -= rdopts->ro_blksz;
@@ -86,20 +101,22 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 		if (!rdopts->ro_seqread) {
 			if (fykshuffle(rdopts->ro_offsets->st_slots,
 					hostprog_stack_size(rdopts->ro_offsets)) < 0)
-				error("failed to shuffle the offset stack: %s", strerror(errno));
+				do_error(rdopts->ro_exit, 1, "failed to shuffle the offset stack: %s",
+					strerror(errno));
 		}
 		
 		while (hostprog_stack_size(rdopts->ro_offsets)) {
 			if (hostprog_stack_pop(rdopts->ro_offsets, &offset) < 0) {
-				error("failed to pop an offset off from the offset stack: %s",
+				do_error(rdopts->ro_exit, 1, "failed to pop an offset off from the offset stack: %s",
 					strerror(errno));
 			}
 			if (lseek(rdfd, offset, SEEK_SET) == ((off_t)-1)) {
-				error("failed to set file pointer to offset %td: %s",
+				do_error(rdopts->ro_exit, 1, "failed to set file pointer to offset %td: %s",
 					offset, strerror(errno));
 			}
 			if (read(rdfd, rdopts->ro_blkbuf, rdopts->ro_blksz) < 0) {
-				error("failed to read from file: %s", strerror(errno));
+				do_error(rdopts->ro_exit, 1, "failed to read from file: %s",
+					strerror(errno));
 			}
 		}
 		
@@ -117,7 +134,8 @@ static void walk_paths(struct readoptions* const rdopts)
 	const int files = hostprog_stack_size(rdopts->ro_files);
 	if (!rdopts->ro_seqfiles) {
 		if (fykshuffle(rdopts->ro_files->st_slots, files) < 0)
-			error("failed to shuffle the file stack: %s", strerror(errno));
+			do_error(rdopts->ro_exit, 1, "failed to shuffle the file stack: %s",
+				strerror(errno));
 	}
 	for (int i = 0; i < files; i++) {
 		rdopts->ro_handle(rdopts, rdopts->ro_files->st_slots[i]);
@@ -138,15 +156,57 @@ static void add_paths_from(struct readoptions* const rdopts,
 		while (length > 0 && isspace(line[length - 1]))
 			line[--length] = '\0';
 		
-		if (hostprog_stack_push(rdopts->ro_files, line) < 0)
-			error("failed to push line \"%s\" from \"%s\" to the file stack"
-				": %s", line, path, strerror(errno));
+		if (length) {
+			if (hostprog_stack_push(rdopts->ro_files, line) < 0)
+				error("failed to push line \"%s\" from \"%s\" to the file stack"
+					": %s", line, path, strerror(errno));
+		}
 		
 		line = NULL;
 		length = 0;
 	}
 	
 	fclose(list);
+}
+
+static void multitask(struct readoptions* const rdopts)
+{
+	pid_t pid;
+	size_t childnr;
+	
+	for (childnr = 0; childnr < rdopts->ro_workers; childnr++) {
+		pid = fork();
+		if (pid < 0) {
+			do_warning(exit, 0, "failed to fork: %s, continuing with %zu workers",
+				strerror(errno), childnr);
+			break;
+		} else if (pid == 0) {
+			/* Deliver SIGHUP when the parent process dies. Then make sure
+			 * that the parent still exists, it is unlikely, but it might
+			 * have been killed before prctl().
+			 */
+			prctl(PR_SET_PDEATHSIG, SIGHUP);
+			rdopts->ro_exit = _Exit;
+			if (rdopts->ro_parent == getppid()) {
+				unsigned int seed = rdopts->ro_seed + childnr + 1;
+				message(VERBOSITY_1, "[%d] seed: %u", getpid(), seed);
+				srand(seed);
+				walk_paths(rdopts);
+			}
+			break;
+		} else {
+			message(VERBOSITY_1, "new child: %d", pid);
+			continue;
+		}
+	}
+	
+	if (childnr && rdopts->ro_parent == getpid()) {
+		int status;
+		while (wait(&status) > 0)
+			continue;
+		if (errno != ECHILD)
+			error("failed to wait: %s", strerror(errno));
+	}
 }
 
 static void usage(const char* const exe, FILE* const dest)
@@ -160,8 +220,10 @@ static void usage(const char* const exe, FILE* const dest)
 		" -r          read file data blocks in a random order\n"
 		" -R          read given files in a random order\n"
 		" -N          do NOT read the file content, just stat() the path\n"
+		" -l          spawn and wait for read processes in an infinite loop\n"
 		" -s <int>    seed to give to srand()\n"
 		" -b <int>    block size to use when reading\n"
+		" -w <int>    use workers to read files simultaneously\n"
 		" -i <str>    path to a list over files to read\n"
 		" infileX     file(s) to read, see -i\n"
 		"\n", exe, FRD_OPTIONS, exe);
@@ -183,7 +245,9 @@ int main(int argc, char* argv[])
 	rdopts->ro_seqfiles = 1;
 	rdopts->ro_seed = time(NULL);
 	rdopts->ro_blksz = sysconf(_SC_PAGESIZE);
+	rdopts->ro_parent = getpid();
 	rdopts->ro_handle = handle_read;
+	rdopts->ro_exit = exit;
 	
 	if (hostprog_stack_create(&rdopts->ro_files, 512, 512) < 0)
 		error("failed to create the file stack");
@@ -212,6 +276,9 @@ int main(int argc, char* argv[])
 			case 'N':
 				rdopts->ro_handle = handle_stat;
 				break;
+			case 'l':
+				rdopts->ro_infiniteloop = 1;
+				break;
 			case 's':
 				opt_strtolx(ul, option, optarg, rdopts->ro_seed);
 				break;
@@ -219,6 +286,9 @@ int main(int argc, char* argv[])
 				opt_strtolx(ul, option, optarg, rdopts->ro_blksz);
 				if (!microfs_ispow2(rdopts->ro_blksz))
 					error("the block size must be a power of two");
+				break;
+			case 'w':
+				opt_strtolx(ul, option, optarg, rdopts->ro_workers);
 				break;
 			case 'i':
 				add_paths_from(rdopts, optarg);
@@ -255,9 +325,23 @@ int main(int argc, char* argv[])
 	if (rdopts->ro_seqread == 0 && rdopts->ro_handle == handle_stat)
 		warning("-r and -N can not coexist, -N will take priority");
 	
-	srand(rdopts->ro_seed);
-	walk_paths(rdopts);
+	if (rdopts->ro_infiniteloop && !rdopts->ro_workers) {
+		warning("-l set without -w > 0, adding one worker");
+		rdopts->ro_workers = 1;
+	}
 	
-	exit(EXIT_SUCCESS);
+	if (hostprog_stack_size(rdopts->ro_files)) {
+		if (rdopts->ro_workers) {
+			do {
+				multitask(rdopts);
+			} while (
+				rdopts->ro_infiniteloop &&
+				rdopts->ro_parent == getpid()
+			);
+		} else {
+			srand(rdopts->ro_seed);
+			walk_paths(rdopts);
+		}
+	}
+	rdopts->ro_exit(EXIT_SUCCESS);
 }
-

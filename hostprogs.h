@@ -44,24 +44,29 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define error(...) \
+#define do_error(Exit, CanExit, ...) \
 	do { \
 		fprintf(stderr, "!!! error: "); \
 		fprintf(stderr, __VA_ARGS__); \
 		fprintf(stderr, " (%s:%d)", __FILE__, __LINE__); \
 		fprintf(stderr, "\n"); \
-		exit(EXIT_FAILURE); \
+		if (CanExit) \
+			Exit(EXIT_FAILURE); \
 	} while (0)
 
-#define warning(...) \
+#define error(...) do_error(exit, 1, __VA_ARGS__)
+
+#define do_warning(Exit, CanExit, ...) \
 	do { \
 		fprintf(stderr, "*** warning: "); \
 		fprintf(stderr, __VA_ARGS__); \
 		fprintf(stderr, " (%s:%d)", __FILE__, __LINE__); \
 		fprintf(stderr, "\n"); \
 		if (hostprog_werror) \
-			error("warnings treated as errors"); \
+			do_error(Exit, CanExit, "warnings treated as errors"); \
 	} while (0)
+
+#define warning(...) do_warning(exit, 1, __VA_ARGS__)
 
 enum {
 	VERBOSITY_0 = 0,
