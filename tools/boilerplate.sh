@@ -108,6 +108,10 @@ _trap_EXIT() {
 }
 trap '_trap_EXIT' EXIT
 
+source_ERR() {
+	_prev_command="source $1"
+}
+
 trap_ERR() {
 	_err_ignored=0
 }
