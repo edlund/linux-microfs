@@ -236,23 +236,21 @@ int main(int argc, char* argv[])
 	if (argc < 2)
 		usage(argc > 0? argv[0]: "", stderr);
 	
-	struct readoptions* rdopts = malloc(sizeof(*rdopts));
-	if (!rdopts)
-		error("failed to allocate read options");
-	memset(rdopts, 0, sizeof(*rdopts));
+	struct readoptions rdopts;
+	memset(&rdopts, 0, sizeof(rdopts));
 	
-	rdopts->ro_seqread = 1;
-	rdopts->ro_seqfiles = 1;
-	rdopts->ro_seed = time(NULL);
-	rdopts->ro_blksz = sysconf(_SC_PAGESIZE);
-	rdopts->ro_parent = getpid();
-	rdopts->ro_handle = handle_read;
-	rdopts->ro_exit = exit;
+	rdopts.ro_seqread = 1;
+	rdopts.ro_seqfiles = 1;
+	rdopts.ro_seed = time(NULL);
+	rdopts.ro_blksz = sysconf(_SC_PAGESIZE);
+	rdopts.ro_parent = getpid();
+	rdopts.ro_handle = handle_read;
+	rdopts.ro_exit = exit;
 	
-	if (hostprog_stack_create(&rdopts->ro_files, 512, 512) < 0)
+	if (hostprog_stack_create(&rdopts.ro_files, 512, 512) < 0)
 		error("failed to create the file stack");
 	
-	if (hostprog_stack_create(&rdopts->ro_offsets, 4096, 4096) < 0)
+	if (hostprog_stack_create(&rdopts.ro_offsets, 4096, 4096) < 0)
 		error("failed to create the offset stack");
 	
 	int option;
@@ -268,30 +266,30 @@ int main(int argc, char* argv[])
 				hostprog_werror = 1;
 				break;
 			case 'r':
-				rdopts->ro_seqread = 0;
+				rdopts.ro_seqread = 0;
 				break;
 			case 'R':
-				rdopts->ro_seqfiles = 0;
+				rdopts.ro_seqfiles = 0;
 				break;
 			case 'N':
-				rdopts->ro_handle = handle_stat;
+				rdopts.ro_handle = handle_stat;
 				break;
 			case 'l':
-				rdopts->ro_infiniteloop = 1;
+				rdopts.ro_infiniteloop = 1;
 				break;
 			case 's':
-				opt_strtolx(ul, option, optarg, rdopts->ro_seed);
+				opt_strtolx(ul, option, optarg, rdopts.ro_seed);
 				break;
 			case 'b':
-				opt_strtolx(ul, option, optarg, rdopts->ro_blksz);
-				if (!microfs_ispow2(rdopts->ro_blksz))
+				opt_strtolx(ul, option, optarg, rdopts.ro_blksz);
+				if (!microfs_ispow2(rdopts.ro_blksz))
 					error("the block size must be a power of two");
 				break;
 			case 'w':
-				opt_strtolx(ul, option, optarg, rdopts->ro_workers);
+				opt_strtolx(ul, option, optarg, rdopts.ro_workers);
 				break;
 			case 'i':
-				add_paths_from(rdopts, optarg);
+				add_paths_from(&rdopts, optarg);
 				break;
 			default:
 				/* Ignore it.
@@ -301,8 +299,8 @@ int main(int argc, char* argv[])
 		}
 	}
 	
-	rdopts->ro_blkbuf = malloc(rdopts->ro_blksz);
-	if (!rdopts->ro_blkbuf)
+	rdopts.ro_blkbuf = malloc(rdopts.ro_blksz);
+	if (!rdopts.ro_blkbuf)
 		error("failed to allocate the read buffer: %s", strerror(errno));
 	
 	/* Add command line listed input files (if present).
@@ -312,36 +310,36 @@ int main(int argc, char* argv[])
 		if (!path) {
 			error("failed to duplicate path \"%s\": %s", argv[optind],
 				strerror(errno));
-		} else if (hostprog_stack_push(rdopts->ro_files, path) < 0) {
+		} else if (hostprog_stack_push(rdopts.ro_files, path) < 0) {
 			error("failed to push \"%s\" to the file stack: %s", path,
 				strerror(errno));
 		}
 	}
 	
-	if (hostprog_stack_size(rdopts->ro_files) > RAND_MAX)
+	if (hostprog_stack_size(rdopts.ro_files) > RAND_MAX)
 		error("%d files can at most be handled, but %d files were given",
-			RAND_MAX, hostprog_stack_size(rdopts->ro_files));
+			RAND_MAX, hostprog_stack_size(rdopts.ro_files));
 	
-	if (rdopts->ro_seqread == 0 && rdopts->ro_handle == handle_stat)
+	if (rdopts.ro_seqread == 0 && rdopts.ro_handle == handle_stat)
 		warning("-r and -N can not coexist, -N will take priority");
 	
-	if (rdopts->ro_infiniteloop && !rdopts->ro_workers) {
+	if (rdopts.ro_infiniteloop && !rdopts.ro_workers) {
 		warning("-l set without -w > 0, adding one worker");
-		rdopts->ro_workers = 1;
+		rdopts.ro_workers = 1;
 	}
 	
-	if (hostprog_stack_size(rdopts->ro_files)) {
-		if (rdopts->ro_workers) {
+	if (hostprog_stack_size(rdopts.ro_files)) {
+		if (rdopts.ro_workers) {
 			do {
-				multitask(rdopts);
+				multitask(&rdopts);
 			} while (
-				rdopts->ro_infiniteloop &&
-				rdopts->ro_parent == getpid()
+				rdopts.ro_infiniteloop &&
+				rdopts.ro_parent == getpid()
 			);
 		} else {
-			srand(rdopts->ro_seed);
-			walk_paths(rdopts);
+			srand(rdopts.ro_seed);
+			walk_paths(&rdopts);
 		}
 	}
-	rdopts->ro_exit(EXIT_SUCCESS);
+	rdopts.ro_exit(EXIT_SUCCESS);
 }

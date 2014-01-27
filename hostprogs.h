@@ -96,6 +96,20 @@ enum {
 		} \
 	} while (0)
 
+#define max(a, b) \
+	({ \
+		__typeof__ (a) a_ = a; \
+		__typeof__ (b) b_ = b; \
+		a_ < b_? b_: a_; \
+	})
+
+#define min(a, b) \
+	({ \
+		__typeof__ (a) a_ = a; \
+		__typeof__ (b) b_ = b; \
+		a_ < b_? a_: b_; \
+	})
+
 static inline char nodtype(const mode_t mode)
 {
 	switch (mode & S_IFMT) {
@@ -121,6 +135,13 @@ static inline char nodtype(const mode_t mode)
 /* A naive implementation of the Fisher-Yates(-Knuth) shuffle.
  */
 int fykshuffle(void** slots, size_t length);
+
+/* Skewed number in [min, max].
+ */
+static inline int rand_nonuniform_range(int min, int max)
+{
+    return rand() % (max - min + 1) + min;
+}
 
 extern int hostprog_werror;
 extern int hostprog_verbosity;

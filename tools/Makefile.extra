@@ -26,7 +26,7 @@ CFLAGS += \
 LDFLAGS += \
 	-lrt
 
-all: devtck devtmk frd
+all: devtck devtmk frd sysdrain
 
 devtck: devtck.c ../hostprogs.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
@@ -37,7 +37,11 @@ devtmk: devtmk.c ../hostprogs.o
 frd: frd.c ../hostprogs.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
+sysdrain: sysdrain.c ../hostprogs.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
 clean:
 	rm -f devtck
 	rm -f devtmk
 	rm -f frd
+	rm -f sysdrain

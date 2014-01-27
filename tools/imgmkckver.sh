@@ -27,8 +27,10 @@ src_dir=""
 dest_dir=""
 img_prefix=""
 extract_arg=""
+rand_seed="`date +%s`"
+stress_test=0
 
-options="t:m:c:s:d:p:x:"
+options="t:m:c:s:d:p:x:r:S"
 while getopts $options option
 do
 	case $option in
@@ -39,14 +41,16 @@ do
 		d ) dest_dir=$OPTARG ;;
 		p ) img_prefix=$OPTARG ;;
 		x ) extract_arg=$OPTARG ;;
+		r ) rand_seed=$OPTARG ;;
+		S ) stress_test=1 ;;
 	esac
 done
 
 if [[ ! -d "${src_dir}" || ! -d "${dest_dir}" || \
 		-z "${mk_cmd}" || -z "${ck_cmd}" || \
-		-z "${mount_type}" ]] ; then
+		-z "${mount_type}" || ! ( "${rand_seed}" =~ ^[0-9]+$ ) ]] ; then
 	cat <<EOF
-Usage: `basename $0` -t:m:c:s:d:x:
+Usage: `basename $0` -t:m:c:s:d:x: [-r:S]
 
 Create a file system image, check it, mount it and compare
 it against its source, all in one (long) command.
@@ -58,6 +62,8 @@ it against its source, all in one (long) command.
     -d <str>    destination to write all files to
     -p <str>    prefix for the image filename
     -x <str>    extract arg name to give to the check command (if any)
+    -r <int>    seed for random generators (only matters with -S)
+    -S          stress test (very time and resource consuming)
 EOF
 	exit 1
 fi
@@ -81,6 +87,11 @@ fi
 eval "${mk_cmd} \"${src_dir}\" \"${img_file}\" 1>\"${cmd_log}.mk.1\" 2>\"${cmd_log}.mk.2\""
 eval "${ck_cmd} \"${img_file}\" 1>\"${cmd_log}.ck.1\" 2>\"${cmd_log}.ck.2\""
 
+if [ -d "${extract_dir}" ] ; then
+	eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\""
+	rm -rf "${extract_dir}"
+fi
+
 img_mount="${img_file}.mount"
 
 mkdir "${img_mount}"
@@ -88,12 +99,28 @@ atexit_0 rmdir "${img_mount}"
 eval "sudo mount -r -o loop -t ${mount_type} \"${img_file}\" \"${img_mount}\""
 atexit sudo umount "${img_mount}"
 
+if [[ $stress_test -ne 0 ]] ; then
+	stress_name="imgmkckver-${rand_seed}"
+	stress_start_params=(
+		"-o \"${dest_dir}\""
+		"-s \"${rand_seed}\""
+		"-w \"16\""
+		"start"
+		"\"${stress_name}\""
+		"\"${img_mount}\""
+	)
+	stress_stop_params=(
+		"-o \"${dest_dir}\""
+		"stop"
+		"\"${stress_name}\""
+	)
+	stress_start_cmd="${script_dir}/stress.sh ${stress_start_params[@]}"
+	stress_stop_cmd="${script_dir}/stress.sh ${stress_stop_params[@]}"
+	eval "${stress_start_cmd}"
+	eval "atexit ${stress_stop_cmd}"
+fi
+
 eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${img_mount}\" -e -w \"${dest_dir}\""
 eval "${script_dir}/rofstests.py \"${img_mount}\""
-
-if [ -d "${extract_dir}" ] ; then
-	eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\""
-	rm -rf "${extract_dir}"
-fi
 
 exit 0

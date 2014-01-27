@@ -26,13 +26,17 @@ source "${script_dir}/tools/boilerplate.sh"
 src_paths=()
 src_cmds=()
 
+conf_quicktest="no"
+conf_stresstest=""
 conf_tempmnt="size=768M,nr_inodes=32k,mode=0755"
 conf_notempmnt=0
 conf_randomseed="`date +%s`"
-options="Mm:r:p:c:"
+options="SQMm:r:p:c:"
 while getopts $options option
 do
 	case $option in
+		Q ) conf_quicktest="yes" ;;
+		S ) conf_stresstest="-S" ;;
 		M ) conf_notempmnt=1 ;;
 		m ) conf_tempmnt=$OPTARG ;;
 		r ) conf_randomseed=$OPTARG ;;
@@ -49,6 +53,7 @@ _check_start_time=`date +%s`
 
 build_dir=$script_dir
 
+echo "$0: quick test? ${conf_quicktest}"
 echo "$0: random seed is \"${conf_randomseed}\""
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
@@ -246,17 +251,27 @@ compression_options=(
 	"-c size"
 	"-c speed"
 )
-blocksz_options=(
-	"-b 512"
-	"-b 1024"
-	"-b 2048"
-	"-b 4096"
-	"-b 8192"
-	"-b 16384"
-	"-b 32768"
-	"-b 131072"
-	"-b 1048576"
-)
+if [[ "${conf_quicktest}" == "no" ]] ; then
+	blocksz_options=(
+		"-b 512"
+		"-b 1024"
+		"-b 2048"
+		"-b 4096"
+		"-b 8192"
+		"-b 16384"
+		"-b 32768"
+		"-b 65536"
+		"-b 131072"
+		"-b 1048576"
+	)
+else
+	blocksz_options=(
+		"-b 512"
+		"-b 4096"
+		"-b 131072"
+		"-b 1048576"
+	)
+fi
 base_options=("${compression_options[@]/%/ -v}")
 all_options=()
 for blksz in "${blocksz_options[@]}" ; do
@@ -276,6 +291,8 @@ for img_src in "${img_srcs[@]}" ; do
 			"-d \"${temp_dir}\""
 			"-p \"`basename \"${img_src}\"`-\""
 			"-x \"-x\""
+			"-r \"${conf_randomseed}\""
+			"${conf_stresstest}"
 		)
 		image_cmd="${script_dir}/tools/imgmkckver.sh ${image_params[@]}"
 		echo "$0: running image command \"${image_cmd}\"..."
