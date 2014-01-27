@@ -255,13 +255,19 @@ static int __microfs_copy_filedata_direct(struct super_block* sb,
 		goto err_inflate;
 	}
 	
-	unused = zstrm->avail_out;
+	unused = (rdreq->rr_npages * PAGE_CACHE_SIZE) - inflated;
 	if (unused) {
-		void* page_data = kmap(rdreq->rr_pages[rdreq->rr_npages - 1]);
-		pr_spam("__microfs_copy_filedata_direct: zeroing %u bytes for page %u\n",
-			unused, page);
-		memset(page_data + (PAGE_CACHE_SIZE - unused), 0, unused);
-		kunmap(rdreq->rr_pages[rdreq->rr_npages - 1]);
+		page = rdreq->rr_npages - 1;
+		do {
+			void* page_data = kmap(rdreq->rr_pages[page]);
+			__u32 page_avail = min_t(__u32, unused, PAGE_CACHE_SIZE);
+			pr_spam("__microfs_copy_filedata_direct: zeroing %u bytes for page %u\n",
+				page_avail, page);
+			memset(page_data + (PAGE_CACHE_SIZE - page_avail), 0, page_avail);
+			kunmap(rdreq->rr_pages[page]);
+			page -= 1;
+			unused -= page_avail;
+		} while (unused);
 	}
 	
 err_inflate:
