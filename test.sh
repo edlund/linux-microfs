@@ -27,7 +27,7 @@ src_paths=()
 src_cmds=()
 
 conf_quicktest="no"
-conf_stresstest=""
+conf_stresstest="no"
 conf_tempmnt="size=768M,nr_inodes=32k,mode=0755"
 conf_notempmnt=0
 conf_randomseed="`date +%s`"
@@ -36,7 +36,7 @@ while getopts $options option
 do
 	case $option in
 		Q ) conf_quicktest="yes" ;;
-		S ) conf_stresstest="-S" ;;
+		S ) conf_stresstest="yes" ;;
 		M ) conf_notempmnt=1 ;;
 		m ) conf_tempmnt=$OPTARG ;;
 		r ) conf_randomseed=$OPTARG ;;
@@ -54,6 +54,7 @@ _check_start_time=`date +%s`
 build_dir=$script_dir
 
 echo "$0: quick test? ${conf_quicktest}"
+echo "$0: stress test? ${conf_stresstest}"
 echo "$0: random seed is \"${conf_randomseed}\""
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
@@ -242,6 +243,12 @@ devtable_simple="${devtable_simple[@]}"
 
 devtable_mount "${devtable_simple_cmd}" "${devtable_simple}"
 devtable_mount "${devtable_host_cmd}" "${devtable_host}"
+
+if [[ "${conf_stresstest}" == "no" ]] ; then
+	conf_stresstest=""
+else
+	conf_stresstest="-S"
+fi
 
 # Try every compression option with different block sizes and
 # try that with and without padding.
