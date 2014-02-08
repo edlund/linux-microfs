@@ -24,6 +24,8 @@ struct microfs_readpage_request {
 	__u32 rr_bhoffset;
 };
 
+/* The caller must hold %microfs_sb_info.si_rdmutex.
+ */
 static int __microfs_find_block(struct super_block* const sb,
 	struct inode* const inode, __u32 blk_ptrs, __u32 blk_nr,
 	__u32* const blk_data_offset,
@@ -95,6 +97,24 @@ static int __microfs_copy_metadata(struct super_block* sb,
 	return 0;
 }
 
+static int __microfs_recycle_metadata(struct super_block* sb,
+	void* data, __u32 offset, __u32 length,
+	microfs_read_blks_consumer consumer)
+{
+	__u32 buf_offset;
+	
+	struct microfs_sb_info* sbi = MICROFS_SB(sb);
+	
+	(void)consumer;
+	
+	if (offset >= sbi->si_metadatabuf.d_offset) {
+		buf_offset = offset - sbi->si_metadatabuf.d_offset;
+		if (buf_offset + length <= sbi->si_metadatabuf.d_size)
+			return 0;
+	}
+	return -EIO;
+}
+
 static int __microfs_copy_filedata_2step(struct super_block* sb,
 	void* data, struct buffer_head** bhs, __u32 nbhs,
 	__u32 offset, __u32 length)
@@ -113,12 +133,14 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 	int err = 0;
 	int zerr = 0;
 	
-	mutex_lock(&sbi->si_rdmutex);
+	if (bhs) {
+		mutex_lock(&sbi->si_rdmutex);
+	}
 	
 	pr_spam("__microfs_copy_filedata_2step: offset=0x%x, length=%u\n",
 		offset, length);
 	
-	if (sbi->si_filedatabuf.d_offset != offset) {
+	if (bhs) {
 		__u32 bh = 0;
 		
 		int repeat = 0;
@@ -156,6 +178,9 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 		sbi->si_filedatabuf.d_used = inflated;
 	} else {
 		inflated = sbi->si_filedatabuf.d_used;
+		pr_spam("__microfs_copy_filedata_2step: cache hit for offset 0x%x"
+			" - %u bytes already inflated in sbi->si_filedatabuf\n",
+				offset, inflated);
 	}
 	
 	for (page = 0, buf_offset = 0, remaining = inflated; page < rdreq->rr_npages;
@@ -179,8 +204,33 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 	}
 	
 err_inflate:
-	mutex_unlock(&sbi->si_rdmutex);
+	if (bhs) {
+		mutex_unlock(&sbi->si_rdmutex);
+	}
 	return err;
+}
+
+static int __microfs_recycle_filedata_2step(struct super_block* sb,
+	void* data, __u32 offset, __u32 length,
+	microfs_read_blks_consumer consumer)
+{
+	int err = 0;
+	int cached = 0;
+	
+	struct microfs_sb_info* sbi = MICROFS_SB(sb);
+	
+	if (sbi->si_filedatabuf.d_offset == offset) {
+		mutex_lock(&sbi->si_rdmutex);
+		if (likely(sbi->si_filedatabuf.d_offset == offset)) {
+			cached = 1;
+			err = consumer(sb, data, NULL, 0, offset, length);
+		} else {
+			pr_spam("__microfs_recycle_filedata_2step:"
+				" near cache miss at offset 0x%x (hit stolen)\n", offset);
+		}
+		mutex_unlock(&sbi->si_rdmutex);
+	}
+	return !err && cached? 0: -EIO;
 }
 
 static int __microfs_copy_filedata_direct(struct super_block* sb,
@@ -275,8 +325,23 @@ err_inflate:
 	return err;
 }
 
-int __microfs_read_blks(struct super_block* sb, struct address_space* mapping,
-	void* data, microfs_read_blks_consumer consumer,
+static int __microfs_recycle_filedata_direct(struct super_block* sb,
+	void* data, __u32 offset, __u32 length,
+	microfs_read_blks_consumer consumer)
+{
+	(void)sb;
+	(void)data;
+	(void)offset;
+	(void)length;
+	(void)consumer;
+	
+	return -EIO;
+}
+
+int __microfs_read_blks(struct super_block* sb,
+	struct address_space* mapping, void* data,
+	microfs_read_blks_recycler recycler,
+	microfs_read_blks_consumer consumer,
 	__u32 offset, __u32 length)
 {
 	__u32 i;
@@ -286,11 +351,18 @@ int __microfs_read_blks(struct super_block* sb, struct address_space* mapping,
 	int err = 0;
 	
 	__u32 blk_nr;
-	__u32 blk_offset = offset - (offset & PAGE_CACHE_MASK);
+	__u32 blk_offset;
 	
-	__u32 nbhs = i_blkptrs(blk_offset + length, PAGE_CACHE_SIZE);
-	struct buffer_head** bhs = kmalloc(nbhs * sizeof(void*), GFP_KERNEL);
+	__u32 nbhs;
+	struct buffer_head** bhs;
 	
+	if (recycler(sb, data, offset, length, consumer) == 0)
+		goto out_cachehit;
+	
+	blk_offset = offset - (offset & PAGE_CACHE_MASK);
+	
+	nbhs = i_blkptrs(blk_offset + length, PAGE_CACHE_SIZE);
+	bhs = kmalloc(nbhs * sizeof(void*), GFP_KERNEL);
 	if (!bhs) {
 		pr_err("__microfs_read_blks: failed to allocate bhs (%u slots)\n", nbhs);
 		err = -ENOMEM;
@@ -351,6 +423,7 @@ err_bhs:
 	}
 	kfree(bhs);
 err_mem:
+out_cachehit:
 	return err;
 }
 
@@ -383,27 +456,13 @@ void* __microfs_read(struct super_block* sb, __u32 offset, __u32 length)
 	
 #undef ABORT_READ_ON
 	
-	/* Check the work buffer, it might contain the requested data.
-	 */
-	if (offset >= sbi->si_metadatabuf.d_offset) {
-		buf_offset = offset - sbi->si_metadatabuf.d_offset;
-		if (buf_offset + length <= sbi->si_metadatabuf.d_size) {
-			pr_devel_once("__microfs_read: first cache hit\n");
-			return sbi->si_metadatabuf.d_data + buf_offset;
-		}
-	}
-	
-	/* And it might not.
-	 */
-	pr_devel_once("__microfs_read: first cache miss\n");
-	
 	data_offset = offset & PAGE_CACHE_MASK;
 	buf_offset = offset - data_offset;
 	
 	/* %microfs_sb_info.si_metadatabuf will not be updated if an
 	 * error is encountered.
 	 */
-	err = __microfs_read_blks(sb, mapping, NULL,
+	err = __microfs_read_blks(sb, mapping, NULL, __microfs_recycle_metadata,
 		__microfs_copy_metadata, offset, sbi->si_metadatabuf.d_size);
 	
 	if (unlikely(err))
@@ -513,13 +572,17 @@ int __microfs_readpage(struct file* file, struct page* page)
 		 * the same data.
 		 */
 		err = __microfs_read_blks(sb, page->mapping, &rdreq,
-			__microfs_copy_filedata_2step, data_offset, data_length);
+			__microfs_recycle_filedata_2step,
+			__microfs_copy_filedata_2step,
+			data_offset, data_length);
 	} else {
 		/* It is possible to uncompress the file data directly into
 		 * the page cache. Neat.
 		 */
 		err = __microfs_read_blks(sb, page->mapping, &rdreq,
-			__microfs_copy_filedata_direct, data_offset, data_length);
+			__microfs_recycle_filedata_direct,
+			__microfs_copy_filedata_direct,
+			data_offset, data_length);
 	}
 	if (unlikely(err)) {
 		pr_err("__microfs_readpage: __microfs_read_blks failed\n");

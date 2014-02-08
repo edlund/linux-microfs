@@ -315,12 +315,18 @@ typedef int (*microfs_read_blks_consumer)(struct super_block* sb,
 	void* data, struct buffer_head** bhs, __u32 nbhs,
 	__u32 offset, __u32 length);
 
+typedef int (*microfs_read_blks_recycler)(struct super_block* sb,
+	void* data, __u32 offset, __u32 length,
+	microfs_read_blks_consumer consumer);
+
 /* Read PAGE_CACHE_SIZEd blocks from the image. %consumer will
  * be called once the requested blocks have been read and is
  * responsible for doing something useful with them.
  */
-int __microfs_read_blks(struct super_block* sb, struct address_space* mapping,
-	void* destbuf, microfs_read_blks_consumer consumer,
+int __microfs_read_blks(struct super_block* sb,
+	struct address_space* mapping, void* data,
+	microfs_read_blks_recycler recycler,
+	microfs_read_blks_consumer consumer,
 	__u32 offset, __u32 length);
 
 /* Read data from the image, a pointer to the data at the
