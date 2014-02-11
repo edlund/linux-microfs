@@ -115,7 +115,7 @@ static struct dentry* microfs_lookup(struct inode* dinode, struct dentry* dentry
 	
 	mutex_lock(&sbi->si_rdmutex);
 	
-	while (offset < dinode->i_size) {
+	while (offset < i_size_read(dinode)) {
 		struct microfs_inode* minode;
 		__u32 minodelen = sizeof(*minode);
 		
@@ -127,7 +127,7 @@ static struct dentry* microfs_lookup(struct inode* dinode, struct dentry* dentry
 		int diff;
 		
 		minode = (struct microfs_inode*)__microfs_read(sb,
-			dir_offset, minodelen + namelen);
+			&sbi->si_metadata_dentrybuf, dir_offset, minodelen + namelen);
 		if (unlikely(IS_ERR(minode))) {
 			err = minode;
 			minode = NULL;
@@ -204,7 +204,7 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 		goto err_fillbuf;
 	}
 	
-	while (offset < vinode->i_size) {
+	while (offset < i_size_read(vinode)) {
 		struct microfs_inode* minode;
 		
 		char* name;
@@ -222,7 +222,7 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 		
 		dentry_offset = microfs_get_offset(vinode) + offset;
 		minode = (struct microfs_inode*)__microfs_read(sb,
-			dentry_offset, sizeof(*minode) + namelen);
+			&sbi->si_metadata_dentrybuf, dentry_offset, sizeof(*minode) + namelen);
 		if (unlikely(IS_ERR(minode))) {
 			pr_err("microfs_readdir:"
 				" failed to read the inode at offset 0x%x\n", dentry_offset);

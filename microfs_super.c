@@ -29,15 +29,18 @@ MODULE_ALIAS_FS("microfs");
 static const struct super_operations microfs_s_ops;
 
 enum {
-	Opt_metadatabufsz
+	Opt_metadata_blkptrbufsz,
+	Opt_metadata_dentrybufsz
 };
 
 static const match_table_t microfs_tokens = {
-	{ Opt_metadatabufsz, "metadatabufsz=%u" }
+	{ Opt_metadata_blkptrbufsz, "metadata_blkptrbufsz=%u" },
+	{ Opt_metadata_dentrybufsz, "metadata_dentrybufsz=%u" }
 };
 
 struct microfs_mount_options {
-	size_t mo_metadatabufsz;
+	size_t mo_metadata_blkptrbufsz;
+	size_t mo_metadata_dentrybufsz;
 };
 
 static size_t microfs_select_bufsz(const char* const name, int requested,
@@ -72,12 +75,20 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 		
 		token = match_token(part, microfs_tokens, args);
 		switch (token) {
-			case Opt_metadatabufsz:
-				if (match_int(&args[0], &option))
-					return 0;
-				mount_opts->mo_metadatabufsz = microfs_select_bufsz("metadatabufsz",
-					option, mount_opts->mo_metadatabufsz);
-				break;
+			
+#define OPT_SZ(Name) \
+	case Opt_##Name: \
+		if (match_int(&args[0], &option)) \
+			return 0; \
+		mount_opts->mo_##Name = microfs_select_bufsz(#Name, \
+			option, mount_opts->mo_##Name); \
+		break
+			
+			OPT_SZ(metadata_blkptrbufsz);
+			OPT_SZ(metadata_dentrybufsz);
+			
+#undef OPT_SZ
+			
 			default:
 				return 0;
 		}
@@ -238,12 +249,13 @@ sb_retry:
 		goto err_sb;
 	}
 	
-	/* The metadata buffer must span at least two PAGE_CACHE_SIZE
+	/* The metadata buffers must span at least two PAGE_CACHE_SIZE
 	 * sized VFS "blocks" so that poor data alignment does not
 	 * cause oob errors (data starting in one VFS block and ending
 	 * at the start of the adjoining block).
 	 */
-	mount_opts.mo_metadatabufsz = PAGE_CACHE_SIZE * 2;
+	mount_opts.mo_metadata_blkptrbufsz = PAGE_CACHE_SIZE * 2;
+	mount_opts.mo_metadata_dentrybufsz = PAGE_CACHE_SIZE * 2;
 	
 	if (!microfs_parse_options(data, sbi, &mount_opts)) {
 		pr_err("failed to parse mount options\n");
@@ -256,12 +268,15 @@ sb_retry:
 	 * size.
 	 */
 	if ((err = create_data_buffer(&sbi->si_filedatabuf,
-			max(sbi->si_blksz, (__u32)PAGE_CACHE_SIZE), "sbi->si_filedatabuf")) < 0)
+			max_t(__u32, sbi->si_blksz, PAGE_CACHE_SIZE), "sbi->si_filedatabuf")) < 0)
 		goto err_filedatabuf;
 	
-	if ((err = create_data_buffer(&sbi->si_metadatabuf,
-			mount_opts.mo_metadatabufsz, "sbi->si_metadatabuf")) < 0)
-		goto err_metadatabuf;
+	if ((err = create_data_buffer(&sbi->si_metadata_blkptrbuf,
+			mount_opts.mo_metadata_blkptrbufsz, "sbi->si_metadata_blkptrbuf")) < 0)
+		goto err_metadata_blkptrbuf;
+	if ((err = create_data_buffer(&sbi->si_metadata_dentrybuf,
+			mount_opts.mo_metadata_dentrybufsz, "sbi->si_metadata_dentrybuf")) < 0)
+		goto err_metadata_dentrybuf;
 	
 	err = microfs_inflate_init(sbi);
 	if (err < 0) {
@@ -279,8 +294,10 @@ sb_retry:
 	
 err_inflate_init:
 	/* Fall-through. */
-err_metadatabuf:
-	destroy_data_buffer(&sbi->si_metadatabuf);
+err_metadata_dentrybuf:
+	destroy_data_buffer(&sbi->si_metadata_dentrybuf);
+err_metadata_blkptrbuf:
+	destroy_data_buffer(&sbi->si_metadata_blkptrbuf);
 err_filedatabuf:
 	destroy_data_buffer(&sbi->si_filedatabuf);
 err_opts:
@@ -313,7 +330,8 @@ static int microfs_remount_fs(struct super_block* sb, int* flags, char* data)
 static void microfs_put_super(struct super_block* sb)
 {
 	destroy_data_buffer(&MICROFS_SB(sb)->si_filedatabuf);
-	destroy_data_buffer(&MICROFS_SB(sb)->si_metadatabuf);
+	destroy_data_buffer(&MICROFS_SB(sb)->si_metadata_blkptrbuf);
+	destroy_data_buffer(&MICROFS_SB(sb)->si_metadata_dentrybuf);
 	
 	microfs_inflate_end(MICROFS_SB(sb));
 	

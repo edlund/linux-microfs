@@ -33,6 +33,8 @@ static int __microfs_find_block(struct super_block* const sb,
 {
 	void* buf_data;
 	
+	struct microfs_sb_info* sbi = MICROFS_SB(sb);
+	
 	int err = 0;
 	
 	__u32 blk_ptr_length = MICROFS_IOFFSET_WIDTH / 8;
@@ -42,8 +44,8 @@ static int __microfs_find_block(struct super_block* const sb,
 	pr_devel_once("microfs_find_block: first call\n");
 	
 	if (blk_nr) {
-		buf_data = __microfs_read(sb, blk_ptr_offset - blk_ptr_length,
-			blk_ptr_length);
+		buf_data = __microfs_read(sb, &sbi->si_metadata_blkptrbuf,
+			blk_ptr_offset - blk_ptr_length, blk_ptr_length);
 		if (unlikely(IS_ERR(buf_data))) {
 			err = PTR_ERR(buf_data);
 			goto err_io;
@@ -54,7 +56,8 @@ static int __microfs_find_block(struct super_block* const sb,
 			+ blk_ptrs * blk_ptr_length;
 	}
 	
-	buf_data = __microfs_read(sb, blk_ptr_offset, blk_ptr_length);
+	buf_data = __microfs_read(sb, &sbi->si_metadata_blkptrbuf,
+		blk_ptr_offset, blk_ptr_length);
 	if (unlikely(IS_ERR(buf_data))) {
 		err = PTR_ERR(buf_data);
 		goto err_io;
@@ -77,21 +80,20 @@ static int __microfs_copy_metadata(struct super_block* sb,
 	__u32 i;
 	__u32 buf_offset;
 	
-	struct microfs_sb_info* sbi = MICROFS_SB(sb);
+	struct microfs_data_buffer* destbuf = data;
 	
-	(void)data;
+	(void)sb;
 	(void)nbhs;
 	(void)offset;
 	
 	pr_spam("__microfs_copy_metadata: offset=0x%x, length=%u\n",
 		offset, length);
 	
-	for (i = 0, buf_offset = 0, sbi->si_metadatabuf.d_used = 0;
+	for (i = 0, buf_offset = 0, destbuf->d_used = 0;
 			i < nbhs && buf_offset < length;
 			i += 1, buf_offset += PAGE_CACHE_SIZE) {
-		sbi->si_metadatabuf.d_used += PAGE_CACHE_SIZE;
-		memcpy(sbi->si_metadatabuf.d_data + buf_offset,
-			bhs[i]->b_data, PAGE_CACHE_SIZE);
+		destbuf->d_used += PAGE_CACHE_SIZE;
+		memcpy(destbuf->d_data + buf_offset, bhs[i]->b_data, PAGE_CACHE_SIZE);
 	}
 	
 	return 0;
@@ -103,13 +105,14 @@ static int __microfs_recycle_metadata(struct super_block* sb,
 {
 	__u32 buf_offset;
 	
-	struct microfs_sb_info* sbi = MICROFS_SB(sb);
+	struct microfs_data_buffer* destbuf = data;
 	
+	(void)sb;
 	(void)consumer;
 	
-	if (offset >= sbi->si_metadatabuf.d_offset) {
-		buf_offset = offset - sbi->si_metadatabuf.d_offset;
-		if (buf_offset + length <= sbi->si_metadatabuf.d_size)
+	if (offset >= destbuf->d_offset) {
+		buf_offset = offset - destbuf->d_offset;
+		if (buf_offset + length <= destbuf->d_size)
 			return 0;
 	}
 	return -EIO;
@@ -429,9 +432,9 @@ out_cachehit:
 
 /* The caller must hold %microfs_sb_info.si_rdmutex.
  */
-void* __microfs_read(struct super_block* sb, __u32 offset, __u32 length)
+void* __microfs_read(struct super_block* sb,
+	struct microfs_data_buffer* destbuf, __u32 offset, __u32 length)
 {
-	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	struct address_space* mapping = sb->s_bdev->bd_inode->i_mapping;
 	
 	__u32 buf_offset;
@@ -451,7 +454,7 @@ void* __microfs_read(struct super_block* sb, __u32 offset, __u32 length)
 	} while (0)
 	
 	ABORT_READ_ON(length == 0);
-	ABORT_READ_ON(length > sbi->si_metadatabuf.d_size);
+	ABORT_READ_ON(length > destbuf->d_size);
 	ABORT_READ_ON(offset + length > mapping->host->i_size);
 	
 #undef ABORT_READ_ON
@@ -462,14 +465,15 @@ void* __microfs_read(struct super_block* sb, __u32 offset, __u32 length)
 	/* %microfs_sb_info.si_metadatabuf will not be updated if an
 	 * error is encountered.
 	 */
-	err = __microfs_read_blks(sb, mapping, NULL, __microfs_recycle_metadata,
-		__microfs_copy_metadata, offset, sbi->si_metadatabuf.d_size);
+	err = __microfs_read_blks(sb, mapping, destbuf,
+		__microfs_recycle_metadata, __microfs_copy_metadata,
+		offset, destbuf->d_size);
 	
 	if (unlikely(err))
 		return ERR_PTR(err);
 	
-	sbi->si_metadatabuf.d_offset = data_offset;
-	return sbi->si_metadatabuf.d_data + buf_offset;
+	destbuf->d_offset = data_offset;
+	return destbuf->d_data + buf_offset;
 }
 
 int __microfs_readpage(struct file* file, struct page* page)

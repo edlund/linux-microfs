@@ -277,8 +277,10 @@ struct microfs_sb_info {
 	__u16 si_blkshift;
 	/* Block size. */
 	__u32 si_blksz;
-	/* Metadata buffer. */
-	struct microfs_data_buffer si_metadatabuf;
+	/* Metadata block pointer buffer. */
+	struct microfs_data_buffer si_metadata_blkptrbuf;
+	/* Metadata dentry/inode buffer. */
+	struct microfs_data_buffer si_metadata_dentrybuf;
 	/* Compressed file data buffer. */
 	struct microfs_data_buffer si_filedatabuf;
 	/* Read mutex. */
@@ -333,7 +335,7 @@ int __microfs_read_blks(struct super_block* sb,
  * given offset is returned.
  */
 void* __microfs_read(struct super_block* sb,
-	__u32 offset, __u32 length);
+	struct microfs_data_buffer* destbuf, __u32 offset, __u32 length);
 
 /* Fill the given page with data, if possible by inflating
  * it directly from the buffer head(s) to the page cache page(s).
