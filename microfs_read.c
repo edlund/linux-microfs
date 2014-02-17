@@ -457,8 +457,7 @@ void* __microfs_read(struct super_block* sb,
 	data_offset = offset & PAGE_CACHE_MASK;
 	buf_offset = offset - data_offset;
 	
-	/* %microfs_sb_info.si_metadatabuf will not be updated if an
-	 * error is encountered.
+	/* %destbuf will not be updated if an error is encountered.
 	 */
 	err = __microfs_read_blks(sb, mapping, destbuf,
 		__microfs_recycle_metadata, __microfs_copy_metadata,
