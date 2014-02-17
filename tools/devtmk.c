@@ -31,7 +31,7 @@ static void translate_directory(FILE* const devtable, const int devbits,
 	int dirlst_count;
 	int dirlst_index;
 	
-	size_t dirpath_lvl = hostprog_path_lvls(dirpath);
+	__u64 dirpath_lvl = hostprog_path_lvls(dirpath);
 	
 	devtable_write(devtable, devbits, rootpath, dirpath, dirst);
 	
@@ -113,7 +113,7 @@ int main(int argc, char* argv[])
 	while (++argn < argc) {
 		message(VERBOSITY_0, " + %s", argv[argn]);
 		
-		size_t rootpath_lvls = hostprog_path_lvls(rootpath);
+		__u64 rootpath_lvls = hostprog_path_lvls(rootpath);
 		
 		if (hostprog_path_append(dirpath, argv[argn]) < 0) {
 			error("failed to set the dir to \"%s\": %s",

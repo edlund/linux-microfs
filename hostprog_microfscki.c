@@ -45,7 +45,7 @@ struct imgdesc {
 	/* Output directory, used if/when extracting. */
 	const char* de_extractdir;
 	/* Length of %de_extractdir. */
-	size_t de_extractdirlen;
+	__u64 de_extractdirlen;
 	/* Image file descriptor. */
 	int de_fd;
 	/* Memory mapping of the entire image. */
@@ -53,21 +53,21 @@ struct imgdesc {
 	/* Buffer used for decompressing blocks. */
 	unsigned char* de_decompressionbuf;
 	/* Size of de_decompressionbuf. */
-	size_t de_decompressionbufsz;
+	__u64 de_decompressionbufsz;
 	/* Outer size of the image. */
-	size_t de_outersz;
+	__u64 de_outersz;
 	/* Inner size of the image. */
-	size_t de_innersz;
+	__u64 de_innersz;
 	/* Image block size. */
-	size_t de_blksz;
+	__u64 de_blksz;
 	/* Image block shift. */
-	size_t de_blkshift;
+	__u64 de_blkshift;
 	/* Size of the image metadata (padding + sb + inodes/dentries). */
-	size_t de_metadatasz;
+	__u64 de_metadatasz;
 	/* Size of the image data (pointers + blocks). */
-	size_t de_datasz;
+	__u64 de_datasz;
 	/* Number of found inodes/dentries. */
-	size_t de_inodes;
+	__u64 de_inodes;
 	/* Quick access to the superblock. */
 	struct microfs_sb* de_sb;
 	/* zlib stream. */
@@ -199,7 +199,7 @@ static struct imgdesc* create_imgdesc(int argc, char* argv[])
 
 static void ck_sb(struct imgdesc* const desc)
 {
-	uoff_t padding = 0;
+	__u64 padding = 0;
 	
 sb_retry:
 	desc->de_sb = (struct microfs_sb*)(desc->de_image + padding);
@@ -218,7 +218,7 @@ sb_retry:
 	
 	desc->de_innersz = __le32_to_cpu(desc->de_sb->s_size);
 	if (desc->de_innersz > desc->de_outersz) {
-		error("superblock size > image outer size: s_size=%zu, de_outersz=%zu",
+		error("superblock size > image outer size: s_size=%llu, de_outersz=%llu",
 			desc->de_innersz, desc->de_outersz);
 	}
 	
@@ -228,8 +228,8 @@ sb_retry:
 		desc->de_quickie = 1;
 	}
 	
-	const uoff_t expected_root_offset = padding + sizeof(*desc->de_sb);
-	const uoff_t actual_root_offset = __le32_to_cpu(desc->de_sb->s_root.i_offset);
+	const __u64 expected_root_offset = padding + sizeof(*desc->de_sb);
+	const __u64 actual_root_offset = __le32_to_cpu(desc->de_sb->s_root.i_offset);
 	
 	const int invalid_offset = (
 		actual_root_offset != 0 &&
@@ -251,7 +251,7 @@ sb_retry:
 	);
 	
 	if (invalid_blkshift)
-		error("invalid block shift: %zu", desc->de_blkshift);
+		error("invalid block shift: %llu", desc->de_blkshift);
 	
 	desc->de_decompressionbufsz = compressBound(desc->de_blksz);
 	desc->de_decompressionbuf = malloc(desc->de_decompressionbufsz);
@@ -265,7 +265,7 @@ sb_retry:
 
 static void ck_crc(struct imgdesc* const desc)
 {
-	uoff_t padding = (unsigned char*)desc->de_sb - desc->de_image;
+	__u64 padding = (unsigned char*)desc->de_sb - desc->de_image;
 	
 	__u32 sb_crc = __le32_to_cpu(desc->de_sb->s_crc);
 	__u32 host_crc = crc32(0L, Z_NULL, 0);
@@ -283,26 +283,27 @@ static void ck_crc(struct imgdesc* const desc)
 }
 
 static void ck_compression(struct imgdesc* const desc,
-	const struct microfs_inode* const inode, const uoff_t inode_offset,
-	char* inode_data, size_t inode_sz)
+	const struct microfs_inode* const inode, const __u64 inode_offset,
+	char* inode_data, __u64 inode_sz)
 {
 	/* The offset can still be invalid, but it is difficult to
 	 * tell untill we try to uncompress the file data.
 	 */
-	size_t blk_nr = 0;
-	size_t blk_ptrs = i_blkptrs(inode_sz, desc->de_blksz);
-	size_t blk_ptr_length = MICROFS_IOFFSET_WIDTH / 8;
-	size_t blk_data_length = 0;
+	__u64 blk_nr = 0;
+	__u64 blk_ptrs = i_blks(inode_sz, desc->de_blksz) + 1;
+	__u64 blk_ptr_length = MICROFS_IOFFSET_WIDTH / 8;
+	__u64 blk_data_length = 0;
 	
-	size_t checked;
-	size_t unchecked = inode_sz;
+	__u64 checked;
+	__u64 unchecked = inode_sz;
 	
-	uoff_t inode_data_offset = 0;
-	uoff_t blk_ptr_offset = __le32_to_cpu(inode->i_offset);
-	uoff_t blk_data_offset = __le32_to_cpu(inode->i_offset)
-		+ blk_ptrs * blk_ptr_length;
+	__u64 inode_data_offset = 0;
+	__u64 blk_ptr_offset = __le32_to_cpu(inode->i_offset);
+	__u64 blk_data_offset = __le32_to_cpu(*(__le32*)(desc->de_image
+		+ blk_ptr_offset));
 	
-	desc->de_datasz += (blk_data_offset - blk_ptr_offset);
+	blk_ptr_offset += blk_ptr_length;
+	desc->de_datasz += blk_ptrs * blk_ptr_length;
 	
 	do {
 		checked = 0;
@@ -311,11 +312,11 @@ static void ck_compression(struct imgdesc* const desc,
 		
 		if (blk_data_length > desc->de_decompressionbufsz) {
 			error("the block data length is too big:"
-				" unchecked=%zu, blk_nr=%zu, blk_ptrs=%zu,"
-				" blk_data_length=%zu, de_decompressionbufsz=%zu,"
+				" unchecked=%llu, blk_nr=%llu, blk_ptrs=%llu,"
+				" blk_data_length=%llu, de_decompressionbufsz=%llu,"
 				" blk_ptr_offset=0x%x, blk_data_offset=0x%x,"
 				" inode_data_offset=0x%x, inode_offset=0x%x,"
-				" inode_sz=%zu",
+				" inode_sz=%llu",
 				unchecked, blk_nr, blk_ptrs,
 				blk_data_length, desc->de_decompressionbufsz,
 				(__u32)blk_ptr_offset, (__u32)blk_data_offset,
@@ -357,7 +358,7 @@ static void ck_compression(struct imgdesc* const desc,
 		
 		if (checked > unchecked) {
 			error("too much data checked, something is wrong:"
-				"unchecked=%zu, checked=%zu, blk_data_offset=0x%x"
+				"unchecked=%llu, checked=%llu, blk_data_offset=0x%x"
 				"inode_data_offset=0x%x, inode_offset=0x%x",
 				unchecked, checked, (__u32)blk_data_offset,
 				(__u32)inode_data_offset, (__u32)inode_offset);
@@ -368,16 +369,16 @@ static void ck_compression(struct imgdesc* const desc,
 }
 
 static void ck_file(struct imgdesc* const desc,
-	const struct microfs_inode* const inode, const uoff_t offset,
-	const uoff_t next, const struct hostprog_path* const path)
+	const struct microfs_inode* const inode, const __u64 offset,
+	const __u64 next, const struct hostprog_path* const path)
 {
 	char* i_dest = NULL;
-	size_t i_size = i_getsize(inode);
+	__u64 i_size = i_getsize(inode);
 	if (i_size == 0)
 		error("zero file size for file \"%s\" at 0x%x",
 			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	
-	uoff_t i_offset = __le32_to_cpu(inode->i_offset);
+	__u64 i_offset = __le32_to_cpu(inode->i_offset);
 	if (i_offset < offset + next)
 		error("invalid offset for file \"%s\" at 0x%x",
 			path->p_path + desc->de_extractdirlen, (__u32)offset);
@@ -413,16 +414,16 @@ static void ck_file(struct imgdesc* const desc,
 }
 
 static void ck_symlink(struct imgdesc* const desc,
-	const struct microfs_inode* const inode, const uoff_t offset,
-	const uoff_t next, const struct hostprog_path* const path)
+	const struct microfs_inode* const inode, const __u64 offset,
+	const __u64 next, const struct hostprog_path* const path)
 {
 	char* i_dest = NULL;
-	size_t i_size = i_getsize(inode);
+	__u32 i_size = i_getsize(inode);
 	if (i_size == 0)
 		error("zero file size for symlink \"%s\" at 0x%x",
 			path->p_path + desc->de_extractdirlen, (__u32)offset);
 	
-	uoff_t i_offset = __le32_to_cpu(inode->i_offset);
+	__u64 i_offset = __le32_to_cpu(inode->i_offset);
 	if (i_offset < offset + next)
 		error("invalid offset for symlink \"%s\" at 0x%x",
 			path->p_path + desc->de_extractdirlen, (__u32)offset);
@@ -446,7 +447,7 @@ static void ck_symlink(struct imgdesc* const desc,
 }
 
 static void ck_nod(struct imgdesc* const desc,
-	const struct microfs_inode* const inode, const uoff_t offset,
+	const struct microfs_inode* const inode, const __u64 offset,
 	const struct hostprog_path* const path)
 {
 	dev_t dev = 0;
@@ -494,7 +495,7 @@ static void ck_nod(struct imgdesc* const desc,
 }
 
 static void ck_name(const char* const name, const size_t namelen,
-	const uoff_t offset)
+	const __u64 offset)
 {
 	for (size_t i = 0; i < namelen; i++) {
 		if (name[i] == '\0')
@@ -504,7 +505,7 @@ static void ck_name(const char* const name, const size_t namelen,
 }
 
 static void ck_metadata(struct imgdesc* const desc,
-	const struct microfs_inode* const inode, const uoff_t offset,
+	const struct microfs_inode* const inode, const __u64 offset,
 	const struct hostprog_path* const path)
 {
 #define CK_ZERO(Value) \
@@ -556,10 +557,10 @@ static void ck_dir(struct imgdesc* const desc,
 	if (!namebuf)
 		error("failed to allocate the name buffer");
 	
-	uoff_t offset = __le32_to_cpu(inode->i_offset);
-	uoff_t dir_offset = 0;
-	size_t dir_size = i_getsize(inode);
-	size_t dir_lvl = hostprog_path_lvls(path);
+	__u64 offset = __le32_to_cpu(inode->i_offset);
+	__u64 dir_offset = 0;
+	__u64 dir_size = i_getsize(inode);
+	__u64 dir_lvl = hostprog_path_lvls(path);
 	
 	while (dir_offset < dir_size) {
 		struct microfs_inode* dentry = (struct microfs_inode*)
@@ -577,7 +578,7 @@ static void ck_dir(struct imgdesc* const desc,
 			error("failed to add \"%s\" to the path", name);
 		
 		mode_t mode = __le16_to_cpu(dentry->i_mode);
-		uoff_t next = sizeof(*dentry) + namelen;
+		__u64 next = sizeof(*dentry) + namelen;
 		
 		message(VERBOSITY_1, " ck %c %s (0x%x)",
 			nodtype(mode), path->p_path + desc->de_extractdirlen,
@@ -621,21 +622,21 @@ static void ck_dir(struct imgdesc* const desc,
 
 static void ck_desc(struct imgdesc* const desc)
 {
-	size_t de_files = desc->de_inodes;
-	size_t sb_files = __le16_to_cpu(desc->de_sb->s_files);
+	__u32 de_files = desc->de_inodes;
+	__u32 sb_files = __le16_to_cpu(desc->de_sb->s_files);
 	if (de_files != sb_files) {
-		error("file count mismatch: ck=%zu, sb=%zu",
+		error("file count mismatch: ck=%u, sb=%u",
 			de_files, sb_files);
 	}
-	size_t innersz = desc->de_metadatasz + desc->de_datasz;
+	__u64 innersz = desc->de_metadatasz + desc->de_datasz;
 	if (desc->de_innersz != innersz) {
 		error("inner size != superblock size:"
-			" de_innersz=%zu, (de_metadatasz+de_datasz)=%zu",
+			" de_innersz=%llu, (de_metadatasz+de_datasz)=%llu",
 			desc->de_innersz, innersz);
 	}
-	message(VERBOSITY_0, "number of inodes: %zu", de_files);
-	message(VERBOSITY_0, "metadata size: %zu bytes", desc->de_metadatasz);
-	message(VERBOSITY_0, "data size: %zu bytes", desc->de_datasz);
+	message(VERBOSITY_0, "number of inodes: %u", de_files);
+	message(VERBOSITY_0, "metadata size: %llu bytes", desc->de_metadatasz);
+	message(VERBOSITY_0, "data size: %llu bytes", desc->de_datasz);
 }
 
 int main(int argc, char* argv[])

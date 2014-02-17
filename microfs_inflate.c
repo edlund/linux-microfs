@@ -20,7 +20,7 @@
 
 int microfs_inflate_init(struct microfs_sb_info* sbi)
 {
-	sbi->si_rdzstream.workspace = vmalloc(zlib_inflate_workspacesize());
+	sbi->si_rdzstream.workspace = kmalloc(zlib_inflate_workspacesize(), GFP_KERNEL);
 	if (!sbi->si_rdzstream.workspace)
 		return -ENOMEM;
 	sbi->si_rdzstream.next_in = NULL;
@@ -34,7 +34,7 @@ int microfs_inflate_init(struct microfs_sb_info* sbi)
 void microfs_inflate_end(struct microfs_sb_info* sbi)
 {
 	zlib_inflateEnd(&sbi->si_rdzstream);
-	vfree(sbi->si_rdzstream.workspace);
+	kfree(sbi->si_rdzstream.workspace);
 }
 
 void __microfs_inflate_reset(struct microfs_sb_info* sbi)

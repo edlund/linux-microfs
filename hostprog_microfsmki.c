@@ -50,9 +50,9 @@ struct entry {
 	/* Uncompressed file data. */
 	char* e_data;
 	/* Offset of the inode. */
-	uoff_t e_ioffset;
+	__u64 e_ioffset;
 	/* Offset of the data. */
-	uoff_t e_dataoffset;
+	__u64 e_dataoffset;
 	/* First child for an non-empty directory. */
 	struct entry* e_firstchild;
 	/* Next sibling in the directory that contains this entry. */
@@ -75,7 +75,7 @@ struct imgspec {
 	/* Buffer used for compressing blocks. */
 	char* sp_compressionbuf;
 	/* Size of sp_compressionbuf. */
-	size_t sp_compressionbufsz;
+	__u64 sp_compressionbufsz;
 	/* Image file descriptor when writing the file. */
 	int sp_fd;
 	/* Pad the image? */
@@ -89,19 +89,35 @@ struct imgspec {
 	/* zlib compression level. */
 	int sp_compresslvl;
 	/* Host page size. */
-	size_t sp_pagesz;
+	__u64 sp_pagesz;
 	/* Left shift for the block size. */
-	size_t sp_blkshift;
+	__u64 sp_blkshift;
 	/* Actual block size. */
-	size_t sp_blksz;
+	__u64 sp_blksz;
 	/* Number of files. */
-	size_t sp_files;
+	__u64 sp_files;
+	/* Regular files. */
+	__u64 sp_regnodes;
+	/* Identical regular files. */
+	__u64 sp_duplicatenodes;
+	/* Special files. */
+	__u64 sp_specnodes;
+	/* Skipped files. */
+	__u64 sp_skipnodes;
+	/* Directories. */
+	__u64 sp_dirnodes;
 	/* Estimated upper bound. */
-	size_t sp_upperbound;
+	__u64 sp_upperbound;
 	/* User requested upper bound. */
-	size_t sp_usrupperbound;
+	__u64 sp_usrupperbound;
+	/* Size of all file data. */
+	__u64 sp_datasz;
+	/* Size of all file data without duplicates. */
+	__u64 sp_realdatasz;
+	/* Number of block pointers required in total. */
+	__u64 sp_blkptrs;
 	/* Pad the total image size to a multiple of this power of 2. */
-	size_t sp_szpad;
+	__u64 sp_szpad;
 	/* Root entry. */
 	struct entry* sp_root;
 	/* Stack of all regular files, used to find duplicates. */
@@ -151,10 +167,10 @@ static int entryszcmp(const void* ent1, const void* ent2)
  * get the size of the of the inode and its name in return,
  * which is handy for updating the size of a directory entry.
  */
-static size_t update_upperbound(struct imgspec* const spec,
-	struct entry* const ent, size_t namelen)
+static __u64 update_upperbound(struct imgspec* const spec,
+	struct entry* const ent, __u64 namelen)
 {
-	const size_t inodesz = sizeof(struct microfs_inode) + namelen;
+	const __u64 inodesz = sizeof(struct microfs_inode) + namelen;
 	spec->sp_upperbound += inodesz;
 	if ((S_ISREG(ent->e_mode) || S_ISLNK(ent->e_mode)) && ent->e_size) {
 		/* The size of a compressed file can never get bigger than
@@ -163,8 +179,12 @@ static size_t update_upperbound(struct imgspec* const spec,
 		 * will rarely happen "naturally", but sometimes it is okay
 		 * to be a pessimist.)
 		 */
-		size_t blks = i_blkptrs(ent->e_size, spec->sp_blksz);
-		spec->sp_upperbound += (MICROFS_IOFFSET_WIDTH / 8) * blks
+		const __u64 blks = i_blks(ent->e_size, spec->sp_blksz);
+		const __u64 blkptrs = blks + 1;
+		spec->sp_blkptrs += blkptrs;
+		spec->sp_datasz += ent->e_size;
+		spec->sp_realdatasz += ent->e_size;
+		spec->sp_upperbound += (MICROFS_IOFFSET_WIDTH / 8) * blkptrs
 			+ compressBound(spec->sp_blksz) * blks;
 	}
 	
@@ -174,6 +194,20 @@ static size_t update_upperbound(struct imgspec* const spec,
 	return inodesz;
 }
 
+static void update_stats(struct imgspec* const spec,
+	struct entry* const ent)
+{
+	if (S_ISDIR(ent->e_mode)) {
+		spec->sp_dirnodes++;
+	} else if (S_ISREG(ent->e_mode) || S_ISLNK(ent->e_mode)) {
+		spec->sp_regnodes++;
+	} else if (S_ISCHR(ent->e_mode) || S_ISBLK(ent->e_mode)) {
+		spec->sp_specnodes++;
+	} else if (S_ISFIFO(ent->e_mode) || S_ISSOCK(ent->e_mode)) {
+		spec->sp_specnodes++;
+	}
+}
+
 static unsigned int walk_directory(struct imgspec* const spec,
 	struct hostprog_path* const path, struct entry** previous)
 {
@@ -181,8 +215,8 @@ static unsigned int walk_directory(struct imgspec* const spec,
 	int dirlst_count;
 	int dirlst_index;
 	
-	size_t dir_sz = 0;
-	size_t dir_lvl = hostprog_path_lvls(path);
+	__u64 dir_sz = 0;
+	__u64 dir_lvl = hostprog_path_lvls(path);
 	
 	dirlst_count = scandir(path->p_path, &dirlst, NULL, hostprog_scandirsort);
 	if (dirlst_count < 0)
@@ -207,6 +241,7 @@ static unsigned int walk_directory(struct imgspec* const spec,
 			 */
 			warning("skipping \"unlstatable\" file \"%s\": %s",
 				path->p_path, strerror(errno));
+			spec->sp_skipnodes++;
 			continue;
 		}
 		
@@ -219,17 +254,20 @@ static unsigned int walk_directory(struct imgspec* const spec,
 			if (access(path->p_path, R_OK) < 0) {
 				warning("skipping unreadable file \"%s\": %s",
 					path->p_path, strerror(errno));
+				spec->sp_skipnodes++;
 				continue;
 			}
 			/* Completely empty files seems pretty pointless to include
 			 * in the image.
 			 */
 			if (!st.st_size) {
-				warning("skipping empty file \"%s\"", path->p_path);
+				message(VERBOSITY_1, ">>> skipping empty file \"%s\"", path->p_path);
+				spec->sp_skipnodes++;
 				continue;
 			}
 		} else if (!spec->sp_incsocks && S_ISSOCK(st.st_mode)) {
 			warning("skipping socket \"%s\"", path->p_path);
+			spec->sp_skipnodes++;
 			continue;
 		}
 		
@@ -273,7 +311,7 @@ static unsigned int walk_directory(struct imgspec* const spec,
 		} else if (S_ISCHR(ent->e_mode) || S_ISBLK(ent->e_mode)) {
 			ent->e_size = makedev_lim(major(st.st_rdev), minor(st.st_rdev),
 				MICROFS_ISIZEX_WIDTH);
-		} else if (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode)) {
+		} else if (S_ISFIFO(ent->e_mode) || S_ISSOCK(ent->e_mode)) {
 			ent->e_size = 0;
 		} else {
 			error("unexpected file mode encountered");
@@ -283,6 +321,8 @@ static unsigned int walk_directory(struct imgspec* const spec,
 		 * long, but that will terminate the program, so that is fine.
 		 */
 		dir_sz += update_upperbound(spec, ent, namelen(dent->d_name));
+		
+		update_stats(spec, ent);
 		
 		message(VERBOSITY_1, "+ %c %s", nodtype(ent->e_mode), path->p_path);
 		
@@ -298,7 +338,7 @@ static unsigned int walk_directory(struct imgspec* const spec,
 	 */
 	if (dir_sz > MICROFS_MAXDIRSIZE) {
 		error("achievement unlocked: the directory size for \"%s\""
-			" is %zu bytes, the maximum supported size is %llu bytes"
+			" is %llu bytes, the maximum supported size is %llu bytes"
 			" - this is impressive in a very scary way",
 			path->p_path, dir_sz, MICROFS_MAXDIRSIZE);
 	}
@@ -307,7 +347,7 @@ static unsigned int walk_directory(struct imgspec* const spec,
 }
 
 static inline void set_dataoffset(struct entry* const ent, char* base,
-	const uoff_t offset)
+	const __u64 offset)
 {
 	struct entry* duplicate = ent->e_same;
 	struct microfs_inode* inode = (struct microfs_inode*)(base + ent->e_ioffset);
@@ -321,16 +361,16 @@ static inline void set_dataoffset(struct entry* const ent, char* base,
 	}
 }
 
-static inline uoff_t superblock_offset(const struct imgspec* const spec)
+static inline __u64 superblock_offset(const struct imgspec* const spec)
 {
 	return spec->sp_pad? MICROFS_PADDING: 0;
 }
 
 static void write_superblock(struct imgspec* const spec, char* base,
-	const size_t sz)
+	const __u64 sz)
 {
-	uoff_t padding = superblock_offset(spec);
-	uoff_t offset = padding + sizeof(struct microfs_sb);
+	__u64 padding = superblock_offset(spec);
+	__u64 offset = padding + sizeof(struct microfs_sb);
 	struct microfs_sb* sb = (struct microfs_sb*)(base + padding);
 	
 	sb->s_magic = __cpu_to_le32(MICROFS_MAGIC);
@@ -378,8 +418,8 @@ static void write_superblock(struct imgspec* const spec, char* base,
 /* Write metadata for the given entries, but not their actual
  * data (see write_data() for that).
  */
-static uoff_t write_metadata(struct imgspec* const spec,
-	char* base, uoff_t offset)
+static __u64 write_metadata(struct imgspec* const spec,
+	char* base, __u64 offset)
 {
 	struct hostprog_stack* metastack = NULL;
 	if (hostprog_stack_create(&metastack, 64, 64))
@@ -394,7 +434,7 @@ static uoff_t write_metadata(struct imgspec* const spec,
 	 */
 	
 	for (;;) {
-		size_t dirstart = metastack->st_index;
+		__u64 dirstart = metastack->st_index;
 		while (ent) {
 			ent->e_ioffset = offset;
 			struct microfs_inode* inode = (struct microfs_inode*)(base + offset);
@@ -487,24 +527,26 @@ static void unload_entry_data(struct entry* const ent)
 	ent->e_data = NULL;
 }
 
-static uoff_t pack_data(struct imgspec* const spec, struct entry* ent,
-	char* base)
+inline static void pack_data_blkptr(char* base, __u64* blkptr_offset, __u64* data_offset)
 {
-	size_t ent_blks = i_blkptrs(ent->e_size, spec->sp_blksz); 
-	size_t ent_sz = ent->e_size;
-	
+	__le32* blkptr = (__le32*)(base + *blkptr_offset);
+	*blkptr = __cpu_to_le32(*data_offset);
+	*blkptr_offset += MICROFS_IOFFSET_WIDTH / 8;
+}
+
+static void pack_data(struct imgspec* const spec, struct entry* ent,
+	char* base, __u64* blkptr_offset, __u64* data_offset)
+{
+	__u64 ent_sz = ent->e_size;
 	char* ent_data = ent->e_data;
 	
-	const size_t blk_ptr_length = MICROFS_IOFFSET_WIDTH / 8;
+	const __u64 orig_data_offset = *data_offset;
 	
-	uoff_t blk_ptr_offset = ent->e_dataoffset;
-	uoff_t blk_data_offset = ent->e_dataoffset + ent_blks * blk_ptr_length;
-	
-	const uoff_t orig_data_offset = blk_data_offset;
+	pack_data_blkptr(base, blkptr_offset, data_offset);
 	
 	do {
-		size_t compr_sz = spec->sp_compressionbufsz;
-		size_t compr_input = ent_sz > spec->sp_blksz? spec->sp_blksz: ent_sz;
+		uLongf compr_sz = spec->sp_compressionbufsz;
+		uLongf compr_input = ent_sz > spec->sp_blksz? spec->sp_blksz: ent_sz;
 		ent_sz -= compr_input;
 		
 		int err = compress2((Bytef*)spec->sp_compressionbuf, &compr_sz,
@@ -515,12 +557,13 @@ static uoff_t pack_data(struct imgspec* const spec, struct entry* ent,
 		}
 		
 		if (spec->sp_compresslvl != Z_NO_COMPRESSION && compr_sz >= compr_input) {
-			message(VERBOSITY_2, ">>> data from offset %zu to %zu in \"%s\""
+			message(VERBOSITY_2, ">>> data from offset %llu to %llu in \"%s\""
 				" \"compressed\" from %zu bytes to %zu bytes",
-				ent_data - ent->e_data, ent_data + compr_input - ent->e_data,
-				ent->e_path, compr_input, compr_sz);
+				(__u64)(ent_data - ent->e_data),
+				(__u64)(ent_data + compr_input - ent->e_data),
+				ent->e_path, (size_t)compr_input, (size_t)compr_sz);
 		}
-		if (blk_data_offset + compr_sz > spec->sp_upperbound) {
+		if (*data_offset + compr_sz > spec->sp_upperbound) {
 			/* This can only happen if sp_upperbound was truncated to
 			 * MICROFS_MAXIMGSIZE in create_imgspec(), otherwise it is
 			 * guaranteed that the upper bound can fit all data even if
@@ -530,48 +573,53 @@ static uoff_t pack_data(struct imgspec* const spec, struct entry* ent,
 			error("out of space, the image can not hold more data");
 		}
 		
-		memcpy(base + blk_data_offset, spec->sp_compressionbuf, compr_sz);
-		blk_data_offset += compr_sz;
+		memcpy(base + *data_offset, spec->sp_compressionbuf, compr_sz);
 		ent_data += compr_input;
+		*data_offset += compr_sz;
 		
-		__le32* blkptr = (__le32*)(base + blk_ptr_offset);
-		*blkptr = __cpu_to_le32(blk_data_offset);
-		blk_ptr_offset += blk_ptr_length;
+		pack_data_blkptr(base, blkptr_offset, data_offset);
 		
 	} while (ent_sz);
 	
-	size_t newsz = blk_data_offset - orig_data_offset;
+	__u64 newsz = *data_offset - orig_data_offset;
 	int changesz = newsz - ent->e_size;
 	message(VERBOSITY_1, "%6.2f%% (%+d bytes)\t\t%s",
 		(changesz * 100) / (double)ent->e_size, changesz, ent->e_path);
-	
-	return blk_data_offset;
 }
 
-static uoff_t do_write_data(struct imgspec* const spec, struct entry* ent,
-	char* base, uoff_t offset)
+static void do_write_data(struct imgspec* const spec, struct entry* ent,
+	char* base, __u64* blkptr_offset, __u64* data_offset)
 {
 	do {
 		if (ent->e_path && ent->e_dataoffset == 0) {
-			set_dataoffset(ent, base, offset);
+			set_dataoffset(ent, base, *blkptr_offset);
 			load_entry_data(ent);
-			offset = pack_data(spec, ent, base);
+			pack_data(spec, ent, base, blkptr_offset, data_offset);
 			unload_entry_data(ent);
 		} else if (ent->e_firstchild) {
-			offset = do_write_data(spec, ent->e_firstchild, base, offset);
+			do_write_data(spec, ent->e_firstchild, base,
+				blkptr_offset, data_offset);
 		}
-		ent = ent->e_sibling;
-	} while (ent);
-	return offset;
+	} while ((ent = ent->e_sibling));
 }
 
-/* Write the actual data for the given entries, but not any
- * metadata (see write_metadata() for that).
+/* Write the actual data for the given entries along with
+ * the block pointers for it.
  */
-static uoff_t write_data(struct imgspec* const spec, char* base, uoff_t offset)
+static __u64 write_data(struct imgspec* const spec, char* base, __u64 offset)
 {
-	return spec->sp_root->e_firstchild? do_write_data(spec,
-		spec->sp_root->e_firstchild, base, offset): offset;
+	if (spec->sp_root->e_firstchild && spec->sp_realdatasz) {
+		const __u64 blkptr_length = MICROFS_IOFFSET_WIDTH / 8;
+		
+		__u64 blkptr_offset = offset;
+		__u64 data_offset = offset + spec->sp_blkptrs * blkptr_length;
+		
+		do_write_data(spec, spec->sp_root->e_firstchild, base,
+			&blkptr_offset, &data_offset);
+		
+		return data_offset;
+	}
+	return offset;
 }
 
 static void find_duplicates(struct imgspec* const spec)
@@ -592,6 +640,8 @@ static void find_duplicates(struct imgspec* const spec)
 			if (memcmp(ent_i->e_data, ent_j->e_data, ent_i->e_size) == 0) {
 				message(VERBOSITY_1, "%s == %s", ent_i->e_path, ent_j->e_path);
 				ent_i->e_same = ent_j;
+				spec->sp_duplicatenodes += 1;
+				spec->sp_realdatasz -= ent_j->e_size;
 			}
 			unload_entry_data(ent_i);
 			unload_entry_data(ent_j);
@@ -674,8 +724,10 @@ static void devtable_modify_entry(struct imgspec* const spec,
 		
 		memset(target, 0, sizeof(*target));
 		
-		if (S_ISREG(mode))
-			error("regular file \"%s\" must exist on the disk", path);
+		if (S_ISREG(mode)) {
+			error("regular file \"%s\" must exist on the disk"
+				" - and it can not be empty", path);
+		}
 		
 		target->e_fd = -1;
 		target->e_mode = mode;
@@ -689,6 +741,8 @@ static void devtable_modify_entry(struct imgspec* const spec,
 		
 		target->e_size = rdev;
 		parent->e_size += update_upperbound(spec, target, targetnamelen);
+		
+		update_stats(spec, target);
 		
 		struct entry* prev = NULL;
 		struct entry* curr = parent->e_firstchild;
@@ -716,7 +770,7 @@ static void devtable_modify_entry(struct imgspec* const spec,
 /* Callback for %devtable_parse().
  */
 static void devtable_process_dentry(struct devtable_dentry* const devt_dent,
-	void* data, const char* file, const char* line, const size_t linenumber)
+	void* data, const char* file, const char* line, const __u64 linenumber)
 {
 	(void)file;
 	(void)line;
@@ -744,7 +798,7 @@ static void usage(const char* const exe, FILE* const dest,
 		" -S          do NOT eliminate regular file duplicates\n"
 		" -b <int>    desired block size in bytes (power of two; min=%d, max=%d)\n"
 		" -u <int>    artificial upper bound given in bytes\n"
-		" -P <int>    pad image size to a multiple of the given power of two (default=%zu)\n"
+		" -P <int>    pad image size to a multiple of the given power of two (default=%llu)\n"
 		" -n <str>    give the image a name\n"
 		" -c <str>    zlib compression level: none, default, speed, size\n"
 		" -D <str>    use the given file as a device table\n"
@@ -815,7 +869,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 					error("the block size must be a power of two");
 				if (spec->sp_blksz < MICROFS_MINBLKSZ ||
 					spec->sp_blksz > MICROFS_MAXBLKSZ) {
-					error("block size out of boundaries, %zu given;"
+					error("block size out of boundaries, %llu given;"
 						" min=%d, max=%d", spec->sp_blksz,
 						MICROFS_MINBLKSZ, MICROFS_MAXBLKSZ);
 				}
@@ -865,7 +919,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	/* The block size should now be correctly set, which means
 	 * that the block left shift can be calculated.
 	 */
-	size_t blksz = spec->sp_blksz;
+	__u64 blksz = spec->sp_blksz;
 	while ((blksz >>= 1) > 0)
 		spec->sp_blkshift++;
 	
@@ -918,8 +972,8 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 			spec->sp_devtable, MICROFS_ISIZEX_WIDTH);
 	
 	if (spec->sp_usrupperbound && spec->sp_upperbound > spec->sp_usrupperbound) {
-		warning("the estimated upper bound %zu is larger than the"
-			" user requested upper bound %zu", spec->sp_upperbound,
+		warning("the estimated upper bound %llu is larger than the"
+			" user requested upper bound %llu", spec->sp_upperbound,
 			spec->sp_usrupperbound);
 	}
 	
@@ -930,7 +984,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	
 	if (spec->sp_upperbound > MICROFS_MAXIMGSIZE) {
 		warning("upper bound image size (absolute worst-case scenario)"
-			" of %zu bytes is larger than the max image size of %llu bytes,"
+			" of %llu bytes is larger than the max image size of %llu bytes,"
 			" there might not be room for everything", spec->sp_upperbound,
 			MICROFS_MAXIMGSIZE);
 		spec->sp_upperbound = MICROFS_MAXIMGSIZE;
@@ -951,11 +1005,25 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	if (!spec->sp_compressionbuf)
 		error("failed to allocate the compression buffer");
 	
-	message(VERBOSITY_1, "Block size: %zu", spec->sp_blksz);
-	message(VERBOSITY_1, "Block shift: %zu", spec->sp_blkshift);
+	message(VERBOSITY_1, "Block size: %llu", spec->sp_blksz);
+	message(VERBOSITY_1, "Block shift: %llu", spec->sp_blkshift);
 	
-	message(VERBOSITY_0, "Upper bound image size: %zu bytes", spec->sp_upperbound);
-	message(VERBOSITY_0, "Number of files: %zu", spec->sp_files);
+	message(VERBOSITY_0, "Upper bound image size: %llu bytes", spec->sp_upperbound);
+	message(VERBOSITY_0, "Number of files: %llu", spec->sp_files);
+	message(VERBOSITY_0, "Directories: %llu", spec->sp_dirnodes);
+	message(VERBOSITY_0, "Regular files: %llu", spec->sp_regnodes);
+	message(VERBOSITY_0, "Duplicate files: %llu", spec->sp_duplicatenodes);
+	message(VERBOSITY_0, "Special files: %llu", spec->sp_specnodes);
+	message(VERBOSITY_0, "Skipped files: %llu", spec->sp_skipnodes);
+	message(VERBOSITY_1, "Data size: %llu", spec->sp_datasz);
+	message(VERBOSITY_1, "Real data size: %llu", spec->sp_realdatasz);
+	message(VERBOSITY_1, "Block pointers required: %llu", spec->sp_blkptrs);
+	
+	if (spec->sp_skipnodes) {
+		warning("not all files will be included in the image");
+		if (hostprog_verbosity < VERBOSITY_1)
+			message(VERBOSITY_0, ">>> use -v to get more information");
+	}
 	
 	return spec;
 }
@@ -970,13 +1038,13 @@ static void materialize_imgspec(struct imgspec* const spec)
 	if (image == MAP_FAILED)
 		error("failed to mmap the image file: %s", strerror(errno));
 	
-	uoff_t offset = superblock_offset(spec) + sizeof(struct microfs_sb);
+	__u64 offset = superblock_offset(spec) + sizeof(struct microfs_sb);
 	
 	offset = write_metadata(spec, image, offset);
 	offset = write_data(spec, image, offset);
 	
-	const size_t innersz = offset;
-	const size_t outersz = sz_blkceil(offset, spec->sp_szpad);
+	const __u64 innersz = offset;
+	const __u64 outersz = sz_blkceil(offset, spec->sp_szpad);
 	
 	write_superblock(spec, image, innersz);
 	
@@ -986,8 +1054,8 @@ static void materialize_imgspec(struct imgspec* const spec)
 	if (ftruncate(spec->sp_fd, outersz) < 0)
 		error("failed to set the final image size: %s", strerror(errno));
 	
-	message(VERBOSITY_1, "Inner image size: %zu bytes", innersz);
-	message(VERBOSITY_0, "Outer image size: %zu bytes", outersz);
+	message(VERBOSITY_1, "Inner image size: %llu bytes", innersz);
+	message(VERBOSITY_0, "Outer image size: %llu bytes", outersz);
 }
 
 int main(int argc, char* argv[])

@@ -31,6 +31,7 @@
 #include <errno.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,6 +44,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#include <linux/types.h>
 
 #define do_error(Exit, CanExit, ...) \
 	do { \
@@ -155,11 +158,11 @@ int hostprog_scandirsort(const struct dirent** a, const struct dirent** b);
  */
 struct hostprog_stack {
 	/* Next free slot. */
-	size_t st_index;
+	__u64 st_index;
 	/* Size of %st_slots. */
-	size_t st_size;
+	__u64 st_size;
 	/* Factor to grow %st_slots with. */
-	size_t st_growth;
+	__u64 st_growth;
 	/* The objects held by the stack. */
 	void** st_slots;
 };
@@ -173,7 +176,7 @@ typedef ptrdiff_t hostprog_stack_int_t;
 #define HOSTPROG_STACK_INT_T_MIN (-HOSTPROG_STACK_INT_T_MAX - 1)
 
 int hostprog_stack_create(struct hostprog_stack** const s,
-	const size_t size, const size_t growth);
+	const __u64 size, const __u64 growth);
 int hostprog_stack_destroy(struct hostprog_stack* const s);
 int hostprog_stack_size(const struct hostprog_stack* const s);
 int _hostprog_stack_push(struct hostprog_stack* s, void* v);
@@ -195,19 +198,19 @@ struct hostprog_path {
 	/* The path, a NULL-terminated string. */
 	char* p_path;
 	/* Number of bytes allocated for %p_path. */
-	size_t p_pathsz;
+	__u64 p_pathsz;
 	/* Number of characters in %p_path. */
-	size_t p_pathlen;
+	__u64 p_pathlen;
 	/* Maximum allowed name length. */
-	size_t p_maxnamelen;
+	__u64 p_maxnamelen;
 	/* Minimi growth of %p_path when it runs out space. */
-	size_t p_mingrowth;
+	__u64 p_mingrowth;
 	/* All path separator indexes (excluding the root dir). */
 	struct hostprog_stack* p_separators;
 };
 
 int hostprog_path_create(struct hostprog_path** dpath, const char* path,
-	const size_t maxnamelen, const size_t mingrowth);
+	const __u64 maxnamelen, const __u64 mingrowth);
 int hostprog_path_append(struct hostprog_path* const dpath, const char* dname);
 int hostprog_path_lvls(struct hostprog_path* const dpath);
 int hostprog_path_dirname(struct hostprog_path* const dpath);

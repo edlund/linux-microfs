@@ -57,6 +57,15 @@ START_TEST(test_i_xsize)
 	
 END_TEST
 
+START_TEST(test_i_blks)
+	_ck_assert_int(i_blks(0, 512), ==, 0);
+	_ck_assert_int(i_blks(8, 512), ==, 1);
+	_ck_assert_int(i_blks(64, 512), ==, 1);
+	_ck_assert_int(i_blks(512, 512), ==, 1);
+	_ck_assert_int(i_blks(768, 512), ==, 2);
+	_ck_assert_int(i_blks(8192, 512), ==, 16);
+END_TEST
+
 START_TEST(test_sz_blkceil)
 	_ck_assert_int(sz_blkceil(42, 2048), ==, 2048);
 	_ck_assert_int(sz_blkceil(3784, 4096), ==, 4096);
@@ -80,6 +89,7 @@ Suite* create_master_suite(void)
 	tcase_add_test(tc, test_microfs_ispow2);
 	tcase_add_test(tc, test_packed_structs);
 	tcase_add_test(tc, test_i_xsize);
+	tcase_add_test(tc, test_i_blks);
 	tcase_add_test(tc, test_sz_blkceil);
 	
 	return s;

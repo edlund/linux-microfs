@@ -43,21 +43,16 @@ static int __microfs_find_block(struct super_block* const sb,
 	
 	pr_devel_once("microfs_find_block: first call\n");
 	
-	if (blk_nr) {
-		buf_data = __microfs_read(sb, &sbi->si_metadata_blkptrbuf,
-			blk_ptr_offset - blk_ptr_length, blk_ptr_length);
-		if (unlikely(IS_ERR(buf_data))) {
-			err = PTR_ERR(buf_data);
-			goto err_io;
-		}
-		*blk_data_offset = __le32_to_cpu(*(__le32*)buf_data);
-	} else {
-		*blk_data_offset = microfs_get_offset(inode)
-			+ blk_ptrs * blk_ptr_length;
-	}
-	
 	buf_data = __microfs_read(sb, &sbi->si_metadata_blkptrbuf,
 		blk_ptr_offset, blk_ptr_length);
+	if (unlikely(IS_ERR(buf_data))) {
+		err = PTR_ERR(buf_data);
+		goto err_io;
+	}
+	*blk_data_offset = __le32_to_cpu(*(__le32*)buf_data);
+	
+	buf_data = __microfs_read(sb, &sbi->si_metadata_blkptrbuf,
+		blk_ptr_offset + blk_ptr_length, blk_ptr_length);
 	if (unlikely(IS_ERR(buf_data))) {
 		err = PTR_ERR(buf_data);
 		goto err_io;
@@ -364,7 +359,7 @@ int __microfs_read_blks(struct super_block* sb,
 	
 	blk_offset = offset - (offset & PAGE_CACHE_MASK);
 	
-	nbhs = i_blkptrs(blk_offset + length, PAGE_CACHE_SIZE);
+	nbhs = i_blks(blk_offset + length, PAGE_CACHE_SIZE);
 	bhs = kmalloc(nbhs * sizeof(void*), GFP_KERNEL);
 	if (!bhs) {
 		pr_err("__microfs_read_blks: failed to allocate bhs (%u slots)\n", nbhs);
@@ -495,7 +490,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 	
 	__u32 pgholes = 0;
 	
-	__u32 blk_ptrs = i_blkptrs(i_size_read(inode), sbi->si_blksz);
+	__u32 blk_ptrs = i_blks(i_size_read(inode), sbi->si_blksz);
 	__u32 blk_nr = small_blks?
 		page->index * (PAGE_CACHE_SIZE >> sbi->si_blkshift):
 		page->index / (sbi->si_blksz / PAGE_CACHE_SIZE);
@@ -503,7 +498,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 	int index_mask = small_blks?
 		0: (1 << (sbi->si_blkshift - PAGE_CACHE_SHIFT)) - 1;
 	
-	__u32 max_index = i_blkptrs(i_size_read(inode), PAGE_CACHE_SIZE);
+	__u32 max_index = i_blks(i_size_read(inode), PAGE_CACHE_SIZE);
 	__u32 start_index = (small_blks? page->index: page->index & ~index_mask);
 	__u32 end_index = (small_blks? page->index: start_index | index_mask) + 1;
 	

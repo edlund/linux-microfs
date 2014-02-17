@@ -28,6 +28,13 @@ $(info DEBUG_INODES build)
 endif
 endif
 
+ifndef CC
+CC := gcc
+endif
+ifndef HOSTCC
+HOSTCC := gcc
+endif
+
 ifndef INSTALL_HOSTPROG_PATH
 INSTALL_HOSTPROG_PATH := /bin/
 endif
@@ -78,7 +85,7 @@ requirevar-%:
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
-	make -C $(PWD)/tools -f Makefile.extra all
+	make -C $(PWD)/tools -f Makefile.extra all CC=$(HOSTCC)
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean

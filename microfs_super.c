@@ -39,21 +39,21 @@ static const match_table_t microfs_tokens = {
 };
 
 struct microfs_mount_options {
-	size_t mo_metadata_blkptrbufsz;
-	size_t mo_metadata_dentrybufsz;
+	__u64 mo_metadata_blkptrbufsz;
+	__u64 mo_metadata_dentrybufsz;
 };
 
-static size_t microfs_select_bufsz(const char* const name, int requested,
-	const size_t minimum)
+static __u64 microfs_select_bufsz(const char* const name, int requested,
+	const __u64 minimum)
 {
 	if (requested <= minimum) {
-		pr_warn("%s=%d, it must be larger than %zu to be usable\n",
+		pr_warn("%s=%d, it must be larger than %llu to be usable\n",
 			name, requested, minimum);
 		return minimum;
 	}
 	if (requested % PAGE_CACHE_SIZE != 0) {
-		pr_warn("%s=%d, but it must be a multiple of %zu\n",
-			name, requested, PAGE_CACHE_SIZE);
+		pr_warn("%s=%d, but it must be a multiple of %llu\n",
+			name, requested, (__u64)PAGE_CACHE_SIZE);
 	}
 	return sz_blkceil(requested, PAGE_CACHE_SIZE);
 }
@@ -102,7 +102,7 @@ static int create_data_buffer(struct microfs_data_buffer* dbuf,
 {
 	dbuf->d_offset = MICROFS_MAXIMGSIZE - 1;
 	dbuf->d_size = sz;
-	dbuf->d_data = vmalloc(dbuf->d_size);
+	dbuf->d_data = kmalloc(dbuf->d_size, GFP_KERNEL);
 	if (!dbuf->d_data) {
 		pr_err("could not allocate data buffer %s\n", name);
 		return -ENOMEM;
@@ -112,7 +112,7 @@ static int create_data_buffer(struct microfs_data_buffer* dbuf,
 
 static void destroy_data_buffer(struct microfs_data_buffer* dbuf)
 {
-	vfree(dbuf->d_data);
+	kfree(dbuf->d_data);
 }
 
 static int microfs_fill_super(struct super_block* sb, void* data, int silent)
@@ -127,7 +127,7 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 	__u32 sb_root_offset = 0;
 	__u32 sb_padding = 0;
 	
-	size_t sb_blksz = 0;
+	__u64 sb_blksz = 0;
 	
 	struct microfs_mount_options mount_opts;
 	
@@ -168,7 +168,7 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 	sb_blksz = sb_set_blocksize(sb, PAGE_CACHE_SIZE);
 	if (!sb_blksz) {
 		pr_err("failed to set the block size to PAGE_CACHE_SIZE"
-			" (%zu bytes)\n", PAGE_CACHE_SIZE);
+			" (%llu bytes)\n", (__u64)PAGE_CACHE_SIZE);
 		err = -EIO;
 		goto err_sbi;
 	}

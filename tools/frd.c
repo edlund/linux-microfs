@@ -38,9 +38,9 @@ struct readoptions {
 	/* Buffer to read data into. */
 	unsigned char* ro_blkbuf;
 	/* Read data in chunks of this size. */
-	size_t ro_blksz;
+	__u64 ro_blksz;
 	/* Use forked processes to read data simultaneously. */
-	size_t ro_workers;
+	__u64 ro_workers;
 	/* PID for the original process. */
 	pid_t ro_parent;
 	/* Files which should be read. */
@@ -81,7 +81,7 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 		
 		const hostprog_stack_int_t max = HOSTPROG_STACK_INT_T_MAX;
 		const hostprog_stack_int_t sz = st.st_size;
-		const hostprog_stack_int_t blks = i_blkptrs(sz, rdopts->ro_blksz);
+		const hostprog_stack_int_t blks = i_blks(sz, rdopts->ro_blksz);
 		
 		hostprog_stack_int_t offset = (blks - 1) * rdopts->ro_blksz;
 		
@@ -172,12 +172,12 @@ static void add_paths_from(struct readoptions* const rdopts,
 static void multitask(struct readoptions* const rdopts)
 {
 	pid_t pid;
-	size_t childnr;
+	__u64 childnr;
 	
 	for (childnr = 0; childnr < rdopts->ro_workers; childnr++) {
 		pid = fork();
 		if (pid < 0) {
-			do_warning(exit, 0, "failed to fork: %s, continuing with %zu workers",
+			do_warning(exit, 0, "failed to fork: %s, continuing with %llu workers",
 				strerror(errno), childnr);
 			break;
 		} else if (pid == 0) {

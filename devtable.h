@@ -53,10 +53,10 @@ struct devtable_dentry {
  * any of the pointers in the callback.
  */
 typedef void (*devtable_process_dentry_t)(struct devtable_dentry* const ent,
-	void* data, const char* file, const char* line, const size_t linenumber);
+	void* data, const char* file, const char* line, const __u64 linenumber);
 
 static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
-	void* data, const char* path, const char* line, const size_t linenumber,
+	void* data, const char* path, const char* line, const __u64 linenumber,
 	const int devbits)
 {
 	struct devtable_entry devt_ent = {
@@ -84,18 +84,18 @@ static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
 			&devt_ent.dt_dev_major, &devt_ent.dt_dev_minor,
 			&devt_ent.dt_dev_start, &devt_ent.dt_dev_incr,
 			&devt_ent.dt_dev_count) < 0) {
-		error("failed to read the device table entry \"%s\" at line %zu: %s",
+		error("failed to read the device table entry \"%s\" at line %llu: %s",
 			line, linenumber, strerror(errno));
 	}
 #pragma GCC diagnostic pop
 	
 	devt_ent.dt_pathlen = strlen(devt_ent.dt_path);
 	if (devt_ent.dt_pathlen == 0) {
-		error("entry path not properly parsed, giving up at line %zu",
+		error("entry path not properly parsed, giving up at line %llu",
 			linenumber);
 	} else if (devt_ent.dt_path[0] != '/') {
 		error("device table entries require absolute paths,"
-			" \"%s\" is not at line %zu", devt_ent.dt_path, linenumber);
+			" \"%s\" is not at line %llu", devt_ent.dt_path, linenumber);
 	}
 	
 	switch (devt_ent.dt_type) {
@@ -115,7 +115,7 @@ static inline void devtable_interpret_entry(devtable_process_dentry_t callback,
 			devt_ent.dt_mode |= S_IFBLK;
 			break;
 		default:
-			error("unsupported file type '%c' at line %zu",
+			error("unsupported file type '%c' at line %llu",
 				devt_ent.dt_type, linenumber);
 	}
 	
@@ -200,7 +200,7 @@ static inline void devtable_write(FILE* const devtable, const int devbits,
 	struct hostprog_path* const rootpath, struct hostprog_path* const dirpath,
 	struct stat* const dirpathst)
 {
-	size_t rootpath_lvl = hostprog_path_lvls(rootpath);
+	__u64 rootpath_lvl = hostprog_path_lvls(rootpath);
 	dev_t dev = makedev_lim(
 		major(dirpathst->st_rdev),
 		minor(dirpathst->st_rdev),

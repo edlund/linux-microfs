@@ -25,7 +25,7 @@
 /* Callback for %devtable_parse().
  */
 static void devtable_process_dentry(struct devtable_dentry* const devt_dent,
-	void* data, const char* file, const char* line, const size_t linenumber)
+	void* data, const char* file, const char* line, const __u64 linenumber)
 {
 	(void)data;
 	(void)line;
@@ -34,13 +34,13 @@ static void devtable_process_dentry(struct devtable_dentry* const devt_dent,
 	
 	struct stat st;
 	if (lstat(devt_dent->de_path + 1, &st) < 0) {
-		error("failed to lstat \"%s\" from %s:%zu: %s", devt_dent->de_path,
+		error("failed to lstat \"%s\" from %s:%llu: %s", devt_dent->de_path,
 			file, linenumber, strerror(errno));
 	}
 	
 #define CK_VAL(Type, A, B) \
 	if (A != B) { \
-		error("%s does not match for \"%s\" from %s:%zu," \
+		error("%s does not match for \"%s\" from %s:%llu," \
 				" " #A "=%d, " #B "=%d", \
 			Type, devt_dent->de_path, file, linenumber, \
 			(int)A, (int)B); \

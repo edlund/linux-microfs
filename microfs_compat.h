@@ -24,8 +24,5 @@
 
 #include <linux/version.h>
 
-/* Nothing needed right now. Yay!
- */
-
 #endif
 

@@ -23,4 +23,3 @@
 #if !defined(GCC_VERSION) || (GCC_VERSION < 40700)
 #warning "unsupported compiler - here be dragons"
 #endif
-

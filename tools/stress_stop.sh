@@ -21,7 +21,7 @@ if [ "`basename $0`" == "stress_stop.sh" ] ; then
 	exit 1
 fi
 
-source_ERR "$0"
+source_ERR "stress_stop.sh"
 
 if [[ -f "${marker}" ]] ; then
 	untrap_ERR

@@ -87,7 +87,7 @@ struct inode* microfs_get_inode(struct super_block* sb,
 static int microfs_readpage(struct file* file, struct page* page)
 {
 	struct inode* inode = page->mapping->host;
-	if (page->index < i_blkptrs(i_size_read(inode), PAGE_CACHE_SIZE)) {
+	if (page->index < i_blks(i_size_read(inode), PAGE_CACHE_SIZE)) {
 		return __microfs_readpage(file, page);
 	} else {
 		void* page_data = kmap(page);
@@ -180,6 +180,8 @@ err_io:
 	return NULL;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)
+
 static int microfs_iterate(struct file* file, struct dir_context* ctx)
 {
 	struct inode* vinode = file_inode(file);
@@ -192,14 +194,14 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 	
 	__u32 offset = ctx->pos;
 	
-	pr_devel_once("microfs_readdir: first call\n");
+	pr_devel_once("microfs_iterate: first call\n");
 	
-	if (offset >= vinode->i_size)
+	if (offset >= i_size_read(vinode))
 		return 0;
 	
 	fillbuf = kmalloc(MICROFS_MAXNAMELEN, GFP_KERNEL);
 	if (unlikely(!fillbuf)) {
-		pr_err("microfs_readdir: failed to allocate the fillbuf\n");
+		pr_err("microfs_iterate: failed to allocate the fillbuf\n");
 		err = -ENOMEM;
 		goto err_fillbuf;
 	}
@@ -224,14 +226,14 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 		minode = (struct microfs_inode*)__microfs_read(sb,
 			&sbi->si_metadata_dentrybuf, dentry_offset, sizeof(*minode) + namelen);
 		if (unlikely(IS_ERR(minode))) {
-			pr_err("microfs_readdir:"
+			pr_err("microfs_iterate:"
 				" failed to read the inode at offset 0x%x\n", dentry_offset);
 			err = PTR_ERR(minode);
 			goto err_io;
 		}
 		
 #if defined(DEBUG) && defined(DEBUG_INODES)
-		print_hex_dump(KERN_DEBUG, pr_fmt("microfs_readdir: inode: "),
+		print_hex_dump(KERN_DEBUG, pr_fmt("microfs_iterate: inode: "),
 			DUMP_PREFIX_OFFSET, 16, 1, minode, sizeof(*minode), true);
 #endif
 		
@@ -239,7 +241,7 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 		namelen = minode->i_namelen;
 		
 #if defined(DEBUG) && defined(DEBUG_INODES)
-		pr_spam("microfs_readdir: inode name: %*.*s\n",
+		pr_spam("microfs_iterate: inode name: %*.*s\n",
 			namelen, namelen, name);
 #endif
 		
@@ -270,6 +272,105 @@ err_fillbuf:
 	return err;
 }
 
+#else
+
+static int microfs_readdir(struct file* file, void* dirent,
+	filldir_t filldir)
+{
+	struct inode* vinode = file_inode(file);
+	struct super_block* sb = vinode->i_sb;
+	struct microfs_sb_info* sbi = MICROFS_SB(sb);
+	
+	char* fillbuf;
+	
+	int err = 0;
+	
+	__u32 offset = file->f_pos;
+	
+	pr_devel_once("microfs_readdir: first call\n");
+	
+	if (offset >= i_size_read(vinode))
+		return 0;
+	
+	fillbuf = kmalloc(MICROFS_MAXNAMELEN, GFP_KERNEL);
+	if (unlikely(!fillbuf)) {
+		pr_err("microfs_readdir: failed to allocate the fillbuf\n");
+		err = -ENOMEM;
+		goto err_fillbuf;
+	}
+	
+	while (offset < i_size_read(vinode)) {
+		struct microfs_inode* minode;
+		
+		char* name;
+		__u8 namelen = MICROFS_MAXNAMELEN;
+		
+		__u32 next_offset;
+		__u32 dentry_offset;
+		
+		ino_t ino;
+		umode_t mode;
+		
+		int err;
+		
+		mutex_lock(&sbi->si_rdmutex);
+		
+		dentry_offset = microfs_get_offset(vinode) + offset;
+		minode = (struct microfs_inode*)__microfs_read(sb,
+			&sbi->si_metadata_dentrybuf, dentry_offset, sizeof(*minode)
+				+ namelen);
+		if (unlikely(IS_ERR(minode))) {
+			pr_err("microfs_readdir:"
+				" failed to read the inode at offset 0x%x\n", dentry_offset);
+			err = PTR_ERR(minode);
+			goto err_io;
+		}
+		
+#if defined(DEBUG) && defined(DEBUG_INODES)
+		print_hex_dump(KERN_DEBUG, pr_fmt("microfs_readdir: inode: "),
+			DUMP_PREFIX_OFFSET, 16, 1, minode, sizeof(*minode), true);
+#endif
+		
+		name = (char*)(minode + 1);
+		namelen = minode->i_namelen;
+		
+#if defined(DEBUG) && defined(DEBUG_INODES)
+		pr_spam("microfs_readdir: inode name: %*.*s\n",
+			namelen, namelen, name);
+#endif
+		
+		memcpy(fillbuf, name, namelen);
+		
+		next_offset = offset + sizeof(*minode) + namelen;
+		dentry_offset = microfs_get_offset(vinode) + offset;
+		ino = microfs_get_ino(minode, dentry_offset);
+		mode = __le16_to_cpu(minode->i_mode);
+		minode = NULL;
+		
+		mutex_unlock(&sbi->si_rdmutex);
+		
+		err = filldir(dirent, fillbuf, namelen, offset, ino, mode >> 12);
+		if (unlikely(err)) {
+			pr_err("microfs_readdir: filldir failed: %d\n", err);
+			break;
+		}
+		
+		file->f_pos = offset = next_offset;
+	}
+	
+	kfree(fillbuf);
+	
+	return 0;
+	
+err_io:
+	mutex_unlock(&sbi->si_rdmutex);
+	kfree(fillbuf);
+err_fillbuf:
+	return err;
+}
+
+#endif
+
 static const struct inode_operations microfs_dir_i_ops = {
 	.lookup = microfs_lookup
 };
@@ -277,7 +378,11 @@ static const struct inode_operations microfs_dir_i_ops = {
 static const struct file_operations microfs_dir_i_fops = {
 	.llseek = generic_file_llseek,
 	.read = generic_read_dir,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)
 	.iterate = microfs_iterate
+#else
+	.readdir = microfs_readdir
+#endif
 };
 
 static const struct address_space_operations microfs_i_a_ops = {

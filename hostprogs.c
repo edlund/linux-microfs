@@ -44,7 +44,7 @@ int hostprog_scandirsort(const struct dirent** a, const struct dirent** b)
 }
 
 int hostprog_stack_create(struct hostprog_stack** const s,
-	const size_t size, const size_t growth)
+	const __u64 size, const __u64 growth)
 {
 	if (size == 0 || growth < 2) {
 		errno = EINVAL;
@@ -131,7 +131,7 @@ int _hostprog_stack_pop(struct hostprog_stack* const s, void** v)
 }
 
 int hostprog_path_create(struct hostprog_path** dpath, const char* dname,
-	const size_t maxnamelen, const size_t mingrowth)
+	const __u64 maxnamelen, const __u64 mingrowth)
 {
 	if (!*dpath && !(*dpath = malloc(sizeof(**dpath)))) {
 		goto err_nomem;
@@ -146,6 +146,8 @@ int hostprog_path_create(struct hostprog_path** dpath, const char* dname,
 	
 	if (hostprog_stack_create(&(*dpath)->p_separators, 64, 64) != 0)
 		goto err_stack_nomem;
+	
+	(*dpath)->p_path[0] = '\0';
 	
 	return dname? hostprog_path_append(*dpath, dname): 0;
 	
@@ -163,8 +165,8 @@ int hostprog_path_append(struct hostprog_path* const dpath, const char* dpart)
 	if (!dpath || !dpart || *dpart == '\0')
 		goto err_inval;
 	
-	size_t extralen = 2;
-	size_t dpartlen = strlen(dpart);
+	__u64 extralen = 2;
+	__u64 dpartlen = strlen(dpart);
 	if (dpartlen > dpath->p_maxnamelen)
 		goto err_inval;
 	
@@ -228,13 +230,13 @@ int hostprog_path_append(struct hostprog_path* const dpath, const char* dpart)
 	
 	/* Now add the path part.
 	 */
-	size_t old_pathlen = dpath->p_pathlen;
+	__u64 old_pathlen = dpath->p_pathlen;
 	memcpy(dpath->p_path + dpath->p_pathlen, dpart, dpartlen);
 	dpath->p_pathlen += dpartlen;
 	
 	/* Then prune it from any excess slashes.
 	 */
-	for (size_t i = old_pathlen; i < dpath->p_pathlen - 1; i++) {
+	for (__u64 i = old_pathlen; i < dpath->p_pathlen - 1; i++) {
 		if (dpath->p_path[i] == '/' && dpath->p_path[i + 1] == '/') {
 			memmove(dpath->p_path + i, dpath->p_path + i + 1,
 				dpath->p_pathlen - i);
@@ -249,7 +251,7 @@ int hostprog_path_append(struct hostprog_path* const dpath, const char* dpart)
 	 * is easy to find parent dirs in %hostprog_path_dirname()
 	 * later on.
 	 */
-	for (size_t i = old_pathlen; i < dpath->p_pathlen - 1; i++) {
+	for (__u64 i = old_pathlen; i < dpath->p_pathlen - 1; i++) {
 		if (i > 0 && dpath->p_path[i] == '/') {
 			if (hostprog_stack_push(dpath->p_separators,
 					(hostprog_stack_int_t)i))

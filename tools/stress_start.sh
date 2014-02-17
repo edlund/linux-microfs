@@ -21,7 +21,7 @@ if [ "`basename $0`" == "stress_start.sh" ] ; then
 	exit 1
 fi
 
-source_ERR "$0"
+source_ERR "stress_start.sh"
 
 pid=0
 files="${wd}/${name}-files.txt"

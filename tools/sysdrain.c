@@ -32,24 +32,24 @@ struct sysdrain {
 	/* Pointers to allocated memory. */
 	void** d_ptrslots;
 	/* Size of pointers in %d_ptrslots. */
-	size_t* d_szslots;
+	__u64* d_szslots;
 	/* The last occupied index of %d_ptrslots. */
-	size_t d_end;
+	__u64 d_end;
 	/* Total size of allocated memory. */
-	size_t d_memsz;
+	__u64 d_memsz;
 };
 
 struct sysdrainoptions {
 	/* Random seed. */
 	unsigned int so_seed;
 	/* User requested drain percentage. */
-	size_t so_targetpercent;
+	__u64 so_targetpercent;
 	/* Target size based on given %so_targetpercent. */
-	size_t so_targetsz;
+	__u64 so_targetsz;
 	/* Approx. max allocated memory. */
-	size_t so_ceilsz;
+	__u64 so_ceilsz;
 	/* Approx. min allocated memory. */
-	size_t so_floorsz;
+	__u64 so_floorsz;
 };
 
 typedef void (*drain_task)(struct sysdrain*);
@@ -57,8 +57,8 @@ typedef void (*drain_task)(struct sysdrain*);
 static void drain_task_memset0(struct sysdrain* drain)
 {
 	message(VERBOSITY_1, "drain_task_memset0");
-	size_t slot = rand_nonuniform_range(0, drain->d_end);
-	size_t slotsz = drain->d_szslots[slot];
+	__u64 slot = rand_nonuniform_range(0, drain->d_end);
+	__u64 slotsz = drain->d_szslots[slot];
 	memset(drain->d_ptrslots[slot], 0, slotsz);
 }
 
@@ -68,8 +68,8 @@ static void drain_task_read(struct sysdrain* drain, const char* path)
 	if (rdfd < 0) {
 		error("failed to open path \"%s\": %s", path, strerror(errno));
 	}
-	size_t slot = rand_nonuniform_range(0, drain->d_end);
-	size_t slotsz = drain->d_szslots[slot];
+	__u64 slot = rand_nonuniform_range(0, drain->d_end);
+	__u64 slotsz = drain->d_szslots[slot];
 	if (read(rdfd, drain->d_ptrslots[slot], slotsz) < 0) {
 		error("failed to read \"%s\": %s", path, strerror(errno));
 	}
@@ -91,26 +91,26 @@ static void drain_task_read_devzero(struct sysdrain* drain)
 static void drain_task_copy(struct sysdrain* drain)
 {
 	message(VERBOSITY_1, "drain_task_copy");
-	size_t slot_a;
-	size_t slot_b;
+	__u64 slot_a;
+	__u64 slot_b;
 	do {
 		slot_a = rand_nonuniform_range(0, drain->d_end);
 		slot_b = rand_nonuniform_range(0, drain->d_end);
 	} while (slot_a == slot_b);
 	
-	size_t slot_asz = drain->d_szslots[slot_a];
-	size_t slot_bsz = drain->d_szslots[slot_b];
+	__u64 slot_asz = drain->d_szslots[slot_a];
+	__u64 slot_bsz = drain->d_szslots[slot_b];
 	
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
-	size_t fromsz = min(slot_asz, slot_bsz);
-	size_t tosz = max(slot_asz, slot_bsz);
+	__u64 fromsz = min(slot_asz, slot_bsz);
+	__u64 tosz = max(slot_asz, slot_bsz);
 #pragma GCC diagnostic pop
 	
 	char* from = drain->d_ptrslots[slot_asz < slot_bsz? slot_a: slot_b];
 	char* to = drain->d_ptrslots[slot_asz < slot_bsz? slot_b: slot_a];
 	
-	for (size_t offset = 0; offset < tosz; offset += fromsz) {
+	for (__u64 offset = 0; offset < tosz; offset += fromsz) {
 		memcpy(to + offset, from, fromsz);
 	}
 }
@@ -118,8 +118,8 @@ static void drain_task_copy(struct sysdrain* drain)
 static void drain_task_memfrob(struct sysdrain* drain)
 {
 	message(VERBOSITY_1, "drain_task_memfrob");
-	size_t slot = rand_nonuniform_range(0, drain->d_end);
-	size_t slotsz = drain->d_szslots[slot];
+	__u64 slot = rand_nonuniform_range(0, drain->d_end);
+	__u64 slotsz = drain->d_szslots[slot];
 	memfrob(drain->d_ptrslots[slot], slotsz);
 }
 
@@ -130,27 +130,27 @@ static void prepare(struct sysdrainoptions* sdopts)
 	
 	double chfactor = sdopts->so_targetpercent / 100.0;
 	
-	sdopts->so_targetsz = (size_t)(sysi.freeram * chfactor);
-	sdopts->so_ceilsz = (size_t)(sysi.freeram * (chfactor + 0.1));
-	sdopts->so_floorsz = (size_t)(sysi.freeram * (chfactor - 0.1));
+	sdopts->so_targetsz = (__u64)(sysi.freeram * chfactor);
+	sdopts->so_ceilsz = (__u64)(sysi.freeram * (chfactor + 0.1));
+	sdopts->so_floorsz = (__u64)(sysi.freeram * (chfactor - 0.1));
 	
 	message(VERBOSITY_1, "free ram: %lu", sysi.freeram);
-	message(VERBOSITY_1, "percent request: %zu%%", sdopts->so_targetpercent);
-	message(VERBOSITY_1, "drain target: %zu", sdopts->so_targetsz);
-	message(VERBOSITY_1, "drain ceiling: %zu", sdopts->so_ceilsz);
-	message(VERBOSITY_1, "drain floor: %zu", sdopts->so_floorsz);
+	message(VERBOSITY_1, "percent request: %llu%%", sdopts->so_targetpercent);
+	message(VERBOSITY_1, "drain target: %llu", sdopts->so_targetsz);
+	message(VERBOSITY_1, "drain ceiling: %llu", sdopts->so_ceilsz);
+	message(VERBOSITY_1, "drain floor: %llu", sdopts->so_floorsz);
 }
 
 static void handle_more_memory(struct sysdrain* drain,
-	const struct sysdrainoptions* const sdopts, size_t steps)
+	const struct sysdrainoptions* const sdopts, __u64 steps)
 {
 	while (drain->d_memsz < sdopts->so_ceilsz && steps > 0) {
 		if (drain->d_end + 1 > SYSDRAIN_SLOTS) {
 			error("out of slots");
 		}
 		
-		size_t new_slot = drain->d_end + 1;
-		size_t new_slotsz = 1 << rand_nonuniform_range(
+		__u64 new_slot = drain->d_end + 1;
+		__u64 new_slotsz = 1 << rand_nonuniform_range(
 			SYSDRAIN_MINRANDSHIFT, SYSDRAIN_MAXRANDSHIFT);
 		
 		drain->d_ptrslots[new_slot] = calloc(1, new_slotsz);
@@ -160,10 +160,10 @@ static void handle_more_memory(struct sysdrain* drain,
 			drain->d_end += 1;
 			drain->d_memsz += new_slotsz;
 			
-			message(VERBOSITY_1, "slot %zu filled with %zu bytes",
+			message(VERBOSITY_1, "slot %llu filled with %llu bytes",
 				new_slot, new_slotsz);
 		} else {
-			message(VERBOSITY_1, "failed to satisfy request for %zu bytes for slot %zu",
+			message(VERBOSITY_1, "failed to satisfy request for %llu bytes for slot %llu",
 				new_slotsz, new_slot);
 		}
 		
@@ -172,11 +172,11 @@ static void handle_more_memory(struct sysdrain* drain,
 }
 
 static void handle_less_memory(struct sysdrain* drain,
-	const struct sysdrainoptions* const sdopts, size_t steps)
+	const struct sysdrainoptions* const sdopts, __u64 steps)
 {
 	while (sdopts->so_floorsz < drain->d_memsz && steps > 0) {
-		size_t slot = rand_nonuniform_range(0, drain->d_end);
-		size_t slotsz = drain->d_szslots[slot];
+		__u64 slot = rand_nonuniform_range(0, drain->d_end);
+		__u64 slotsz = drain->d_szslots[slot];
 		
 		free(drain->d_ptrslots[slot]);
 		
@@ -189,7 +189,7 @@ static void handle_less_memory(struct sysdrain* drain,
 		drain->d_end -= 1;
 		drain->d_memsz -= slotsz;
 		
-		message(VERBOSITY_1, "%zu bytes freed from slot %zu",
+		message(VERBOSITY_1, "%llu bytes freed from slot %llu",
 			slotsz, slot);
 		
 		steps--;
@@ -209,7 +209,7 @@ static void handle_memory(struct sysdrain* drain,
 		else
 			handle_less_memory(drain, sdopts, 64);
 	}
-	message(VERBOSITY_1, "drained bytes: %zu", drain->d_memsz);
+	message(VERBOSITY_1, "drained bytes: %llu", drain->d_memsz);
 }
 
 static void handle_workload(struct sysdrain* drain,
@@ -275,7 +275,7 @@ int main(int argc, char* argv[])
 	sdopts.so_seed = time(NULL);
 	sdopts.so_targetpercent = 70;
 	
-	size_t optarglen;
+	__u64 optarglen;
 	int option;
 	while ((option = getopt(argc, argv, SYSDRAIN_OPTIONS)) != EOF) {
 		switch (option) {
@@ -298,7 +298,7 @@ int main(int argc, char* argv[])
 				}
 				opt_strtolx(ul, option, optarg, sdopts.so_targetpercent);
 				if (sdopts.so_targetpercent < 10 || sdopts.so_targetpercent > 90)
-					error("invalid memory drain request: %zu%%\n",
+					error("invalid memory drain request: %llu%%\n",
 						sdopts.so_targetpercent);
 				break;
 			default:

@@ -67,9 +67,6 @@ __MICROFS_BEGIN_EXTERN_C
 
 #endif
 
-typedef __s64 soff_t;
-typedef __u64 uoff_t;
-
 #define __MICROFS_ISPOW2(N) \
 	((N) > 1 && !((N) & ((N) - 1)))
 
@@ -177,7 +174,7 @@ struct microfs_inode {
 	__u8 i_sizeh;
 	/* Filename length. */
 	__u8 i_namelen;
-	/* Data offset. */
+	/* Offset for the block pointers. */
 	__le32 i_offset;
 } __attribute__ ((packed));
 
@@ -229,12 +226,12 @@ static inline void i_setsize(struct microfs_inode* const ino, __u32 size)
 	ino->i_sizeh = (__u8)(size >> MICROFS_ISIZEL_WIDTH);
 }
 
-/* Get the number of block pointers required for a file of
- * %size bytes with the given %blksz.
+/* Get the number of blocks required for a file of %size
+ * bytes with the given %blksz.
  */
-static inline __u32 i_blkptrs(__u32 sz, __u32 blksz)
+static inline __u32 i_blks(__u32 sz, __u32 blksz)
 {
-	return (sz - 1) / blksz + 1;
+	return sz == 0? 0: (sz - 1) / blksz + 1;
 }
 
 /* Round up the given %size to a multiple of the given block
