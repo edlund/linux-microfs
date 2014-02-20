@@ -37,6 +37,17 @@
 #define CKI_PEDANTIC \
 	"(pedantic, disable with -P) "
 
+/* 
+ */
+struct imgdata {
+	/* Offset of the first block pointer. */
+	__u64 d_offset;
+	/* Size of all block pointers. */
+	__u32 d_blkptrsz;
+	/* Block data size. */
+	__u32 d_rawsz;
+};
+
 /* Description of an image.
  */
 struct imgdesc {
@@ -82,6 +93,8 @@ struct imgdesc {
 	int de_chutime;
 	/* Enable pedantic warnings. */
 	int de_pedantic;
+	/* Stack of all regular files, used to find duplicates. */
+	struct hostprog_stack* de_datastack;
 };
 
 static void usage(const char* const exe, FILE* const dest)
@@ -194,6 +207,9 @@ static struct imgdesc* create_imgdesc(int argc, char* argv[])
 		error("failed to open \"%s\": %s", desc->de_infile,
 			strerror(errno));
 	
+	if (hostprog_stack_create(&desc->de_datastack, 64, 64) < 0)
+		error("failed to create the regular file stack");
+	
 	return desc;
 }
 
@@ -294,6 +310,8 @@ static void ck_compression(struct imgdesc* const desc,
 	__u64 blk_ptr_length = MICROFS_IOFFSET_WIDTH / 8;
 	__u64 blk_data_length = 0;
 	
+	const __u64 blk_ptrs_totalsz = blk_ptrs * blk_ptr_length;
+	
 	__u64 checked;
 	__u64 unchecked = inode_sz;
 	
@@ -302,8 +320,15 @@ static void ck_compression(struct imgdesc* const desc,
 	__u64 blk_data_offset = __le32_to_cpu(*(__le32*)(desc->de_image
 		+ blk_ptr_offset));
 	
+	struct imgdata* imgd = malloc(sizeof(*imgd));
+	if (!imgd)
+		error("failed to allocate an image data entry");
+	imgd->d_offset = blk_ptr_offset;
+	imgd->d_blkptrsz = blk_ptrs_totalsz;
+	imgd->d_rawsz = 0;
+	
 	blk_ptr_offset += blk_ptr_length;
-	desc->de_datasz += blk_ptrs * blk_ptr_length;
+	desc->de_metadatasz += blk_ptrs_totalsz;
 	
 	do {
 		checked = 0;
@@ -351,6 +376,7 @@ static void ck_compression(struct imgdesc* const desc,
 			inode_data_offset += desc->de_zstream.total_out;
 			
 			desc->de_datasz += blk_data_length;
+			imgd->d_rawsz += blk_data_length;
 		}
 		
 		blk_nr += 1;
@@ -366,6 +392,10 @@ static void ck_compression(struct imgdesc* const desc,
 			unchecked -= checked;
 		
 	} while (unchecked);
+	
+	if (hostprog_stack_push(desc->de_datastack, imgd) < 0)
+		error("failed to push an entry to the data file stack: %s",
+			strerror(errno));
 }
 
 static void ck_file(struct imgdesc* const desc,
@@ -620,8 +650,34 @@ static void ck_dir(struct imgdesc* const desc,
 	free(namebuf);
 }
 
+/* Comparison callback for %qsort().
+ */
+static int imgdataoffsetcmp(const void* d1, const void* d2)
+{
+	return (int)(*(const struct imgdata**)d1)->d_offset
+		- (int)(*(const struct imgdata**)d2)->d_offset;
+}
+
 static void ck_desc(struct imgdesc* const desc)
 {
+	const int files = hostprog_stack_size(desc->de_datastack);
+	
+	qsort(desc->de_datastack->st_slots, files,
+		sizeof(*desc->de_datastack->st_slots), imgdataoffsetcmp);
+	
+	for (int i = 0, j = 1; j < files; i++, j++) {
+		struct imgdata* imgd_i = desc->de_datastack->st_slots[i];
+		struct imgdata* imgd_j = desc->de_datastack->st_slots[j];
+		
+		if (imgd_i->d_offset == imgd_j->d_offset) {
+			if (imgd_i->d_blkptrsz != imgd_j->d_blkptrsz ||
+					imgd_i->d_rawsz != imgd_j->d_rawsz)
+				error("strange block share");
+			desc->de_metadatasz -= imgd_j->d_blkptrsz;
+			desc->de_datasz -= imgd_j->d_rawsz;
+		}
+	}
+	
 	__u32 de_files = desc->de_inodes;
 	__u32 sb_files = __le16_to_cpu(desc->de_sb->s_files);
 	if (de_files != sb_files) {

@@ -56,6 +56,9 @@ ln -s "$1/rand-0.dat" "$1/symboliclink-rand-0.dat"
 mkdir -p "$1/a"
 mkdir -p "$1/b"
 
+ln "$1/rand-0.dat" "$1/a/hardlink-rand-0.dat"
+ln "$1/rand-0.dat" "$1/b/hardlink-rand-0.dat"
+
 ln -s "$1/a" "$1/symboliclink-a"
 ln -s "$1/b" "$1/symboliclink-b"
 
@@ -67,7 +70,15 @@ ln -s "$1/a/rand-1.dat" "$1/symboliclink-rand-1.dat"
 
 ln "$1/b/rand-2.dat" "$1/a/hardlink-rand-2.dat"
 ln -s "$1/b/rand-2.dat" "$1/a/symboliclink-rand-2.dat"
+ln -s "$1/b/rand-2.dat" "$1/b/symboliclink-rand-2.dat"
 
 ln -P "$1/symboliclink-rand-0.dat" "$1/hardlink-symboliclink-rand-0.dat"
 ln -P "$1/symboliclink-a" "$1/hardlink-symboliclink-a"
 ln -P "$1/symboliclink-b" "$1/hardlink-symboliclink-b"
+
+content="The content of this file is not important."
+
+echo "${content}" > "$1/c-1.txt"
+echo "${content}" > "$1/c-2.txt"
+echo "${content}" > "$1/a/c-3.txt"
+echo "${content}" > "$1/b/c-4.txt"

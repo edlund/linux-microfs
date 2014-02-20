@@ -45,6 +45,8 @@ struct entry {
 	unsigned int e_uid;
 	/* File GID. */
 	unsigned int e_gid;
+	/* Block pointers required for for the entry (if reg or lnk). */
+	unsigned int e_blkptrs;
 	/* File descriptor used when mapping the entry. */
 	int e_fd;
 	/* Uncompressed file data. */
@@ -155,14 +157,6 @@ static size_t namelen(const char* const name)
 	return namelen;
 }
 
-/* Comparison callback for %qsort().
- */
-static int entryszcmp(const void* ent1, const void* ent2)
-{
-	return ((const struct entry*)ent1)->e_size
-		- ((const struct entry*)ent2)->e_size;
-}
-
 /* Update the upperbound image size for the given spec and
  * get the size of the of the inode and its name in return,
  * which is handy for updating the size of a directory entry.
@@ -180,11 +174,11 @@ static __u64 update_upperbound(struct imgspec* const spec,
 		 * to be a pessimist.)
 		 */
 		const __u64 blks = i_blks(ent->e_size, spec->sp_blksz);
-		const __u64 blkptrs = blks + 1;
-		spec->sp_blkptrs += blkptrs;
+		ent->e_blkptrs = blks + 1;
+		spec->sp_blkptrs += ent->e_blkptrs;
 		spec->sp_datasz += ent->e_size;
 		spec->sp_realdatasz += ent->e_size;
-		spec->sp_upperbound += (MICROFS_IOFFSET_WIDTH / 8) * blkptrs
+		spec->sp_upperbound += (MICROFS_IOFFSET_WIDTH / 8) * ent->e_blkptrs
 			+ compressBound(spec->sp_blksz) * blks;
 	}
 	
@@ -303,7 +297,7 @@ static unsigned int walk_directory(struct imgspec* const spec,
 				error("failed to copy the entry path for \"%s\"",
 					path->p_path);
 			}
-			if (spec->sp_shareblocks && S_ISREG(ent->e_mode)) {
+			if (spec->sp_shareblocks) {
 				if (hostprog_stack_push(spec->sp_regstack, ent) < 0)
 					error("failed to push an entry to the regular file stack: %s",
 						strerror(errno));
@@ -622,6 +616,14 @@ static __u64 write_data(struct imgspec* const spec, char* base, __u64 offset)
 	return offset;
 }
 
+/* Comparison callback for %qsort().
+ */
+static int entryszcmp(const void* ent1, const void* ent2)
+{
+	return (int)(*(const struct entry**)ent1)->e_size
+		- (int)(*(const struct entry**)ent2)->e_size;
+}
+
 static void find_duplicates(struct imgspec* const spec)
 {
 	if (hostprog_stack_size(spec->sp_regstack) < 2)
@@ -630,17 +632,37 @@ static void find_duplicates(struct imgspec* const spec)
 	qsort(spec->sp_regstack->st_slots, hostprog_stack_size(spec->sp_regstack),
 		sizeof(*spec->sp_regstack->st_slots), entryszcmp);
 	
-	for (int i = 0, j = 1; j < hostprog_stack_size(spec->sp_regstack);
-			i++, j++) {
+	const int files = hostprog_stack_size(spec->sp_regstack);
+	
+	for (int i = 0, last_sz = 0, last_i = 0; i < files; i++) {
 		struct entry* ent_i = (struct entry*)spec->sp_regstack->st_slots[i];
-		struct entry* ent_j = (struct entry*)spec->sp_regstack->st_slots[j];
-		if (ent_i->e_size == ent_j->e_size) {
+		if (!ent_i)
+			continue;
+		
+		if (last_sz != (int)ent_i->e_size) {
+			last_sz = ent_i->e_size;
+			last_i = i;
+		}
+		
+		for (int j = last_i; j < files; j++) {
+			struct entry* ent_j = (struct entry*)spec->sp_regstack->st_slots[j];
+			if (!ent_j || ent_i == ent_j) {
+				continue;
+			} else if (ent_i->e_size != ent_j->e_size) {
+				break;
+			}
+			
 			load_entry_data(ent_i);
 			load_entry_data(ent_j);
 			if (memcmp(ent_i->e_data, ent_j->e_data, ent_i->e_size) == 0) {
 				message(VERBOSITY_1, "%s == %s", ent_i->e_path, ent_j->e_path);
+				if (ent_i->e_same)
+					ent_j->e_same = ent_i->e_same;
 				ent_i->e_same = ent_j;
+				spec->sp_regstack->st_slots[j] = NULL;
 				spec->sp_duplicatenodes += 1;
+				
+				spec->sp_blkptrs -= ent_j->e_blkptrs;
 				spec->sp_realdatasz -= ent_j->e_size;
 			}
 			unload_entry_data(ent_i);
