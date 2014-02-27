@@ -27,10 +27,11 @@ src_dir=""
 dest_dir=""
 img_prefix=""
 extract_arg=""
+img_src=""
 rand_seed="`date +%s`"
 stress_test=0
 
-options="t:m:c:s:d:p:x:r:S"
+options="t:m:c:s:d:p:x:i:r:S"
 while getopts $options option
 do
 	case $option in
@@ -41,16 +42,17 @@ do
 		d ) dest_dir=$OPTARG ;;
 		p ) img_prefix=$OPTARG ;;
 		x ) extract_arg=$OPTARG ;;
+		i ) img_src=$OPTARG ;;
 		r ) rand_seed=$OPTARG ;;
 		S ) stress_test=1 ;;
 	esac
 done
 
 if [[ ! -d "${src_dir}" || ! -d "${dest_dir}" || \
-		-z "${mk_cmd}" || -z "${ck_cmd}" || \
+		-z "${mk_cmd}" || -z "${ck_cmd}" || -z "${img_src}" || \
 		-z "${mount_type}" || ! ( "${rand_seed}" =~ ^[0-9]+$ ) ]] ; then
 	cat <<EOF
-Usage: `basename $0` -t:m:c:s:d:x: [-r:S]
+Usage: `basename $0` -t:m:c:s:d:x:k: [-r:S]
 
 Create a file system image, check it, mount it and compare
 it against its source, all in one (long) command.
@@ -62,6 +64,7 @@ it against its source, all in one (long) command.
     -d <str>    destination to write all files to
     -p <str>    prefix for the image filename
     -x <str>    extract arg name to give to the check command (if any)
+    -i <str>    the source of -s, either a path or a command
     -r <int>    seed for random generators (only matters with -S)
     -S          stress test (very time and resource consuming)
 EOF
@@ -93,10 +96,12 @@ if [ -d "${extract_dir}" ] ; then
 fi
 
 img_mount="${img_file}.mount"
+img_mountid="`date +%s`"
+img_mountopts="-r -o loop,debug_mountid=${img_mountid} -t ${mount_type}"
 
 mkdir "${img_mount}"
 atexit_0 rmdir "${img_mount}"
-eval "sudo mount -r -o loop -t ${mount_type} \"${img_file}\" \"${img_mount}\""
+eval "sudo mount ${img_mountopts} \"${img_file}\" \"${img_mount}\""
 atexit sudo umount "${img_mount}"
 
 if [[ $stress_test -ne 0 ]] ; then
@@ -122,5 +127,7 @@ fi
 
 eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${img_mount}\" -e -w \"${dest_dir}\""
 eval "${script_dir}/rofstests.py \"${img_mount}\""
+
+eval "${script_dir}/logck.sh -l \"${cmd_log}\" -s \"${img_src}\" -m \"${img_mountid}\""
 
 exit 0

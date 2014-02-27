@@ -30,12 +30,14 @@ static const struct super_operations microfs_s_ops;
 
 enum {
 	Opt_metadata_blkptrbufsz,
-	Opt_metadata_dentrybufsz
+	Opt_metadata_dentrybufsz,
+	Opt_debug_mountid
 };
 
 static const match_table_t microfs_tokens = {
 	{ Opt_metadata_blkptrbufsz, "metadata_blkptrbufsz=%u" },
-	{ Opt_metadata_dentrybufsz, "metadata_dentrybufsz=%u" }
+	{ Opt_metadata_dentrybufsz, "metadata_dentrybufsz=%u" },
+	{ Opt_debug_mountid, "debug_mountid=%u" }
 };
 
 struct microfs_mount_options {
@@ -87,10 +89,16 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 			OPT_SZ(metadata_blkptrbufsz);
 			OPT_SZ(metadata_dentrybufsz);
 			
-#undef OPT_SZ
-			
+			case Opt_debug_mountid:
+				if (match_int(&args[0], &option))
+					return 0;
+				pr_info("debug_mountid=%d\n", option);
+				break;
 			default:
 				return 0;
+			
+#undef OPT_SZ
+			
 		}
 	}
 	
@@ -158,6 +166,20 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 #if PAGE_CACHE_SIZE > MICROFS_MAXBLKSZ
 #warning "PAGE_CACHE_SIZE greater than MICROFS_MAXBLKSZ is not supported"
 #endif
+	
+	/* The metadata buffers must span at least two PAGE_CACHE_SIZE
+	 * sized VFS "blocks" so that poor data alignment does not
+	 * cause oob errors (data starting in one VFS block and ending
+	 * at the start of the adjoining block).
+	 */
+	mount_opts.mo_metadata_blkptrbufsz = PAGE_CACHE_SIZE * 2;
+	mount_opts.mo_metadata_dentrybufsz = PAGE_CACHE_SIZE * 2;
+	
+	if (!microfs_parse_options(data, sbi, &mount_opts)) {
+		pr_err("failed to parse mount options\n");
+		err = -EINVAL;
+		goto err_opts;
+	}
 	
 	if (sb->s_bdev->bd_inode->i_size % PAGE_CACHE_SIZE != 0) {
 		pr_err("device size is not a multiple of PAGE_CACHE_SIZE\n");
@@ -249,20 +271,6 @@ sb_retry:
 		goto err_sb;
 	}
 	
-	/* The metadata buffers must span at least two PAGE_CACHE_SIZE
-	 * sized VFS "blocks" so that poor data alignment does not
-	 * cause oob errors (data starting in one VFS block and ending
-	 * at the start of the adjoining block).
-	 */
-	mount_opts.mo_metadata_blkptrbufsz = PAGE_CACHE_SIZE * 2;
-	mount_opts.mo_metadata_dentrybufsz = PAGE_CACHE_SIZE * 2;
-	
-	if (!microfs_parse_options(data, sbi, &mount_opts)) {
-		pr_err("failed to parse mount options\n");
-		err = -EINVAL;
-		goto err_opts;
-	}
-	
 	/* The filedata buffer must be big enough to fit either an
 	 * entire block or a whole page, depending on the used block
 	 * size.
@@ -300,8 +308,6 @@ err_metadata_blkptrbuf:
 	destroy_data_buffer(&sbi->si_metadata_blkptrbuf);
 err_filedatabuf:
 	destroy_data_buffer(&sbi->si_filedatabuf);
-err_opts:
-	/* Fall-through. */
 err_sb:
 	msb = NULL;
 	brelse(bh);
@@ -311,6 +317,7 @@ err_sbi:
 	kfree(sbi);
 	sbi = NULL;
 	pr_err("failed to fill super block 0x%p\n", sb);
+err_opts:
 	return err;
 }
 

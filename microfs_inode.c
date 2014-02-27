@@ -100,8 +100,8 @@ static int microfs_readpage(struct file* file, struct page* page)
 	}
 }
 
-static struct dentry* microfs_lookup(struct inode* dinode, struct dentry* dentry,
-	unsigned int flags)
+static struct dentry* microfs_lookup(struct inode* dinode,
+	struct dentry* dentry, unsigned int flags)
 {
 	__u32 offset = 0;
 	

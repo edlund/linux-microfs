@@ -28,8 +28,8 @@ src_cmds=()
 
 conf_quicktest="no"
 conf_stresstest="no"
+conf_usetempmnt="yes"
 conf_tempmnt="size=768M,nr_inodes=32k,mode=0755"
-conf_notempmnt=0
 conf_randomseed="`date +%s`"
 options="SQMm:r:p:c:"
 while getopts $options option
@@ -37,7 +37,7 @@ do
 	case $option in
 		Q ) conf_quicktest="yes" ;;
 		S ) conf_stresstest="yes" ;;
-		M ) conf_notempmnt=1 ;;
+		M ) conf_usetempmnt="no" ;;
 		m ) conf_tempmnt=$OPTARG ;;
 		r ) conf_randomseed=$OPTARG ;;
 		p ) src_paths=("${OPTARG}") ;;
@@ -55,13 +55,14 @@ build_dir=$script_dir
 
 echo "$0: quick test? ${conf_quicktest}"
 echo "$0: stress test? ${conf_stresstest}"
+echo "$0: use tmpfs? ${conf_usetempmnt}"
 echo "$0: random seed is \"${conf_randomseed}\""
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
 atexit_0 rm -rf "${temp_dir}"
 echo "$0: temporary directory used is \"${temp_dir}\""
 
-if [[ $conf_notempmnt -eq 0 && "${conf_tempmnt}" != "" ]] ; then
+if [[ "${conf_usetempmnt}" == "yes" && "${conf_tempmnt}" != "" ]] ; then
 	eval "sudo mount -t tmpfs -o \"${conf_tempmnt}\" tmpfs \"${temp_dir}\""
 	atexit sudo umount "${temp_dir}"
 	eval "sudo chown -R --reference=\"${HOME}\" \"${temp_dir}\""
@@ -132,7 +133,7 @@ check_util_mkholedir
 echo "$0: utility tests passed."
 echo "$0: running lkm and hostprog tests..."
 
-img_srcs=()
+declare -A img_srcs
 
 if [ "${#src_cmds[@]}" == 0 ] ; then
 	src_cmds=(
@@ -150,7 +151,7 @@ for src_path in "${src_paths[@]}" ; do
 	echo "$0: Adding \"${src_path}\" as an image source dir..."
 	src_dir=`basename ${src_path}`
 	img_src="${temp_dir}/${src_dir}"
-	img_srcs+=("${img_src}")
+	img_srcs[$src_path]="${img_src}"
 	sudo cp -r "${src_path}" "${img_src}"
 	user=`whoami`
 	group=`id -gn $user`
@@ -162,7 +163,7 @@ for src_cmd in "${src_cmds[@]}" ; do
 	src_dir=`basename "${src_cmd}"`
 	src_dir="${src_dir//[^-a-zA-Z0-9]/_}"
 	img_src="${temp_dir}/${src_dir}"
-	img_srcs+=("${img_src}")
+	img_srcs[$src_cmd]="${img_src}"
 	echo "$0: Running \"${src_cmd}\" to create \"${img_src}\"..."
 	eval "${src_cmd} \"${img_src}\""
 	echo "$0: ... ok."
@@ -286,7 +287,8 @@ for blksz in "${blocksz_options[@]}" ; do
 done
 all_options=("${all_options[@]}" "${all_options[@]/%/ -p}")
 
-for img_src in "${img_srcs[@]}" ; do
+for src_cmd in "${src_cmds[@]}" ; do
+	img_src="${img_srcs[$src_cmd]}"
 	for options in "${all_options[@]}" ; do
 		mk_cmd="${build_dir}/microfsmki ${options}"
 		ck_cmd="${build_dir}/microfscki -v -e"
@@ -298,6 +300,7 @@ for img_src in "${img_srcs[@]}" ; do
 			"-d \"${temp_dir}\""
 			"-p \"`basename \"${img_src}\"`-\""
 			"-x \"-x\""
+			"-i \"${src_cmd}\""
 			"-r \"${conf_randomseed}\""
 			"${conf_stresstest}"
 		)
@@ -305,6 +308,7 @@ for img_src in "${img_srcs[@]}" ; do
 		echo "$0: running image command \"${image_cmd}\"..."
 		eval "${image_cmd}"
 		echo "$0: ... ok (`date +'%H:%M:%S'`)."
+		snore 1s 1 "$0: waiting for a new second"
 	done
 done
 
