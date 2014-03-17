@@ -243,8 +243,11 @@ The host for the test machine is an Acer Aspire 7741G with
 ##### Block size 4096 bytes, 10 passes
 
 Command:
+
     $ tools/rofsbench.sh -n 10 -r 1387916272 -b 4096 -w /tmp/perf/
+
 Result:
+
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
         microfs:   real=0.1320    sys=0.0070    user=0.0030
@@ -302,8 +305,11 @@ Result:
 ##### Block size 131072 bytes, 10 passes
 
 Command:
+
     $ tools/rofsbench.sh -n 10 -r 1387916272 -b 131072 -w /tmp/perf/
+
 Result:
+
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
         microfs:   real=0.1310    sys=0.0100    user=0.0010
@@ -363,8 +369,11 @@ Result:
 ##### Block size 4096 bytes, 10 passes
 
 Command:
+
     $ tools/rofsbench.sh -n 10 -r 1389877799 -b 4096 -w /tmp/perf/
+
 Result:
+
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
         microfs:   real=0.1180    sys=0.0030    user=0.0010
@@ -422,8 +431,11 @@ Result:
 ##### Block size 131072 bytes, 10 passes
 
 Command:
+
     $ tools/rofsbench.sh -n 10 -r 1389877799 -b 131072 -w /tmp/perf/
+
 Result:
+
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
         microfs:   real=0.1210    sys=0.0030    user=0.0000
