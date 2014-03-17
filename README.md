@@ -26,8 +26,8 @@ The difference between `cramfs` and `microfs` lies in that `microfs`
  * Support image sizes larger than 272 mb (the upper limit is
    2^32 bytes).
  * Support slightly longer file names (3 extra bytes).
- * Support ctime/mtime values for inodes (although all files will
-   share the same value which is when the image was created).
+ * Support ctime/mtime values for VFS inodes by using the ctime
+   value for the image stored in the superblock.
  * Support different compression settings for zlib when the image
    is created.
  * Will try to uncompress data from the buffer heads directly
