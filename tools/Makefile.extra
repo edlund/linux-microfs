@@ -15,13 +15,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+PWD := $(shell pwd)
+
+ifndef INSTALL_PATH
+INSTALL_PATH := /usr/local/bin
+endif
+
 CFLAGS += \
 	-Wall \
 	-Wextra \
 	-pedantic \
 	-std=c11 \
 	-D_GNU_SOURCE \
-	-ggdb
+	-D_FILE_OFFSET_BITS=64
+
+ifdef DEBUG
+CFLAGS += -ggdb
+$(info DEBUG build)
+endif
 
 LDFLAGS += \
 	-lrt
@@ -45,3 +56,15 @@ clean:
 	rm -f devtmk
 	rm -f frd
 	rm -f sysdrain
+
+install:
+	cp $(PWD)/devtck $(INSTALL_PATH)
+	cp $(PWD)/devtmk $(INSTALL_PATH)
+	cp $(PWD)/frd $(INSTALL_PATH)
+	cp $(PWD)/sysdrain $(INSTALL_PATH)
+
+uninstall:
+	rm $(INSTALL_PATH)/devtck 
+	rm $(INSTALL_PATH)/devtmk
+	rm $(INSTALL_PATH)/frd
+	rm $(INSTALL_PATH)/sysdrain

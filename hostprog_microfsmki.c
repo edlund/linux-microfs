@@ -18,8 +18,6 @@
 
 // microfs make image
 
-#define _FILE_OFFSET_BITS 64
-
 #include "hostprogs.h"
 #include "microfs.h"
 

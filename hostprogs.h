@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -149,9 +150,6 @@ static inline int rand_nonuniform_range(int min, int max)
 extern int hostprog_werror;
 extern int hostprog_verbosity;
 
-/* %alphasort() uses %strcoll(), which means that order can
- * change depending on the locale information.
- */
 int hostprog_scandirsort(const struct dirent** a, const struct dirent** b);
 
 /* A simplistic stack implementation.
@@ -172,8 +170,15 @@ struct hostprog_stack {
  */
 typedef ptrdiff_t hostprog_stack_int_t;
 
-#define HOSTPROG_STACK_INT_T_MAX ((hostprog_stack_int_t)(~0ULL >> 1))
-#define HOSTPROG_STACK_INT_T_MIN (-HOSTPROG_STACK_INT_T_MAX - 1)
+#if __WORDSIZE == 64
+#define HOSTPROG_STACK_INT_T_ZERO 0ULL
+#else
+#define HOSTPROG_STACK_INT_T_ZERO 0UL
+#endif
+#define HOSTPROG_STACK_INT_T_MAX \
+	((hostprog_stack_int_t)(~HOSTPROG_STACK_INT_T_ZERO >> 1))
+#define HOSTPROG_STACK_INT_T_MIN \
+	(-HOSTPROG_STACK_INT_T_MAX - 1)
 
 int hostprog_stack_create(struct hostprog_stack** const s,
 	const __u64 size, const __u64 growth);

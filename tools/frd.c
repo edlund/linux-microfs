@@ -16,8 +16,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#define _FILE_OFFSET_BITS 64
-
 #include "../microfs.h"
 #include "../hostprogs.h"
 
@@ -86,7 +84,7 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 		hostprog_stack_int_t offset = (blks - 1) * rdopts->ro_blksz;
 		
 		if (offset > max) {
-			do_error(rdopts->ro_exit, 1, "achievement unlocked: the file \"%s\" is too big,"
+			do_error(rdopts->ro_exit, 1, "the file \"%s\" is too big,"
 				" offset=%td, max=%td", path, offset, max);
 		}
 		

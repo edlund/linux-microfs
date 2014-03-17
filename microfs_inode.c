@@ -120,7 +120,7 @@ static struct dentry* microfs_lookup(struct inode* dinode,
 		__u32 minodelen = sizeof(*minode);
 		
 		char* name;
-		__u32 namelen = MICROFS_MAXNAMELEN;
+		__u8 namelen = MICROFS_MAXNAMELEN;
 		
 		__u32 dir_offset = microfs_get_offset(dinode) + offset;
 		

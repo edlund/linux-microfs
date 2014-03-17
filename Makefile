@@ -15,8 +15,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+ifndef CC
+CC := gcc
+endif
+ifndef HOSTCC
+HOSTCC := gcc
+endif
+
+ifndef INSTALL_HOSTPROG_PATH
+INSTALL_HOSTPROG_PATH := /usr/local/bin
+endif
+
+HOST_EXTRACFLAGS += \
+	-Wall \
+	-Wextra \
+	-pedantic \
+	-std=c11 \
+	-D_GNU_SOURCE \
+	-D_FILE_OFFSET_BITS=64
+
 ifdef DEBUG
 ccflags-y := -DDEBUG
+HOST_EXTRACFLAGS += -ggdb
 $(info DEBUG build)
 ifdef DEBUG_SPAM
 ccflags-y += -DDEBUG_SPAM
@@ -27,25 +47,6 @@ ccflags-y += -DDEBUG_INODES
 $(info DEBUG_INODES build)
 endif
 endif
-
-ifndef CC
-CC := gcc
-endif
-ifndef HOSTCC
-HOSTCC := gcc
-endif
-
-ifndef INSTALL_HOSTPROG_PATH
-INSTALL_HOSTPROG_PATH := /bin/
-endif
-
-HOST_EXTRACFLAGS += \
-	-Wall \
-	-Wextra \
-	-pedantic \
-	-std=c11 \
-	-D_GNU_SOURCE \
-	-ggdb
 
 # clean-files := ...
 
@@ -85,7 +86,7 @@ requirevar-%:
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
-	make -C $(PWD)/tools -f Makefile.extra all CC=$(HOSTCC)
+	make -C $(PWD)/tools -f Makefile.extra all CC=$(HOSTCC) DEBUG=$(DEBUG)
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
@@ -110,5 +111,11 @@ remotecheck: requirevar-REMOTEHOST requirevar-REMOTEPORT \
 
 install: all
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules_install
+	make -C $(PWD)/tools -f Makefile.extra install INSTALL_PATH=$(INSTALL_HOSTPROG_PATH)
 	cp $(PWD)/microfscki $(INSTALL_HOSTPROG_PATH)
 	cp $(PWD)/microfsmki $(INSTALL_HOSTPROG_PATH)
+
+uninstall:
+	make -C $(PWD)/tools -f Makefile.extra uninstall INSTALL_PATH=$(INSTALL_HOSTPROG_PATH)
+	rm $(INSTALL_HOSTPROG_PATH)/microfscki
+	rm $(INSTALL_HOSTPROG_PATH)/microfsmki

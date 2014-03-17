@@ -18,8 +18,6 @@
 
 // microfs check image
 
-#define _FILE_OFFSET_BITS 64
-
 #include "hostprogs.h"
 #include "microfs.h"
 
@@ -529,7 +527,7 @@ static void ck_name(const char* const name, const size_t namelen,
 {
 	for (size_t i = 0; i < namelen; i++) {
 		if (name[i] == '\0')
-			warning("dentry name contains NULLS ('\\0') at 0x%x",
+			error("dentry name contains NULLS ('\\0') at 0x%x",
 				(__u32)offset);
 	}
 }
@@ -592,6 +590,8 @@ static void ck_dir(struct imgdesc* const desc,
 	__u64 dir_size = i_getsize(inode);
 	__u64 dir_lvl = hostprog_path_lvls(path);
 	
+	unsigned char prev_name0 = '\0';
+	
 	while (dir_offset < dir_size) {
 		struct microfs_inode* dentry = (struct microfs_inode*)
 			(desc->de_image + offset);
@@ -602,6 +602,10 @@ static void ck_dir(struct imgdesc* const desc,
 		memcpy(namebuf, name, namelen);
 		namebuf[namelen] = '\0';
 		name = namebuf;
+		
+		if ((unsigned char)name[0] < prev_name0)
+			error("strange sort order of dentries at 0x%x", (__u32)offset);
+		prev_name0 = (unsigned char)name[0];
 		
 		ck_name(name, namelen, offset);
 		if (hostprog_path_append(path, name) < 0)
