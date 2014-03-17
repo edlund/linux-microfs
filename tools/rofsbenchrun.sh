@@ -76,7 +76,7 @@ echo "$0: ${mnt_cmd}"
 eval "${mnt_cmd}"
 atexit sudo umount "${fs_mount}"
 
-snore 1s 10 "$0: waiting for mount to settle"
+snore 1s 4 "$0: waiting for mount to settle"
 
 stopwatch() {
 	local cache="$1"
