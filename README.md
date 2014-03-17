@@ -8,16 +8,16 @@ https://github.com/edlund/linux-microfs
     of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
     See the GNU General Public License for more details.
 
-microfs is basically a reimplementation of cramfs with a few new
+`microfs` is basically a reimplementation of `cramfs` with a few new
 features added which are not backwards compatible. It is mostly
 implemented to serve as an exercise for its author and might not
 be particularly useful in any real world scenario. If you are
-looking for a cramfs replacement, you probably want to consider
-squashfs (which is an excellent read only file system). With that
-said, you might still find microfs interesting, particularly if
-you appreciate cramfs for its awesome simplicity.
+looking for a `cramfs` replacement, you probably want to consider
+`squashfs` (which is an excellent read only file system). With that
+said, you might still find `microfs` interesting, particularly if
+you appreciate `cramfs` for its awesome simplicity.
 
-The difference between cramfs and microfs lies in that microfs
+The difference between `cramfs` and `microfs` lies in that `microfs`
 
  * Always store metadata as little endian and convert data to the
    endianess of the host when it is necessary/required.
@@ -33,15 +33,18 @@ The difference between cramfs and microfs lies in that microfs
  * Will try to uncompress data from the buffer heads directly
    to the page cache pages if it is possible.
  * Will have different read buffers and zlib streams for
-   different mounted images. (microfs will therefore always use
-   more memory than cramfs.)
+   different mounted images. (`microfs` will therefore always use
+   more memory than `cramfs`.)
  * Does not support file holes by simply skipping the zero bytes
-   like cramfs, instead it will treat file holes as any other data
+   like `cramfs`, instead it will treat file holes as any other data
    and compress it.
+ * Split the image into four main parts; 1) superblock, 2) inodes
+   and dentries, 3) block pointers and 4) the compressed blocks.
+   See the section "image format" for more information.
 
 ## Licensing
 
-Most of microfs is GPL v.2, just like the Linux kernel. There
+Most of `microfs` is GPL v.2, just like the Linux kernel. There
 are however a few utilities which might be useful outside of
 the project and are licensed under the new BSD license. Check
 the copyright and license notice at the top of the file to know
@@ -50,16 +53,43 @@ license is explicitly specified in a file.
 
 ## Linux kernel compatibility
 
-microfs currently targets the latest Ubuntu release (Ubuntu 13.10
-"Saucy Salamander", linux 3.11), this is mostly because the
-upstream kernel is such a fast moving target that it would
-require extra effort to develop against.
+`microfs` is mainly focused on supporting a small number of
+kernel versions for popular distrubutions in the debian family.
+This is mostly because the upstream kernel is such a fast moving
+target that it would require extra effort to develop against.
+
+Supported kernels at the time of writing:
+
+ * Ubuntu: `3.11.0-x-generic` (13.10, "Saucy Salamander")
+ * Debian: `3.12-0.bpo.x-486` (7, "Wheezy")
+ * Debian: `3.12-0.bpo.x-amd64` (7, "Wheezy")
+ * Raspbian: `3.10.25+`
+
+It may well work with other versions and other dists, but that
+has not been tested.
+
+## Image format
+
+`microfs` images has four main parts:
+
+ * `super block`
+ * `inodes/dentries`
+ * `block pointers`
+ * `compressed data blocks`
+
+The main difference compared to `cramfs` is that the block
+pointers are placed in their own section rather than being
+placed just before the compressed data blocks that they point
+to. The idea is that this change should allow `microfs` to use
+its buffers more efficiently. The downside is that each regular
+file and symlink requires one extra block pointer with this
+setup.
 
 ## Building microfs
 
-It is presumed that you are planning to build microfs on a
+It is presumed that you are planning to build `microfs` on a
 GNU/Linux system which can compile the Linux kernel. Adding
-to the requirements implied by this assumption microfs will
+to the requirements implied by this assumption `microfs` will
 also need the following things in order to compile successfully:
 
  * gcc (>=4.7), http://gcc.gnu.org/
@@ -67,17 +97,10 @@ also need the following things in order to compile successfully:
  * check unit test framework (>=0.9.8), http://check.sourceforge.net/
  * zlib (>=1.2.7), http://www.zlib.net/
  * python (>=2.7), http://www.python.org/
- * perl5 (>=v5.14), http://www.perl.org/
  * cramfs-tools (>=1.1), http://sourceforge.net/projects/cramfs/ (opt)
  * squashfs-tools (>=4.2), http://squashfs.sourceforge.net/ (opt)
  * inotify-tools (>=3.14), https://github.com/rvoicilas/inotify-tools (opt)
  * tmpfs (>=3.11.0), https://www.kernel.org/ (opt)
-
-The easiest way to set up a temporary build environment to try
-microfs is to install Ubuntu on a virtual machine and use
-`tools/packman.sh` with an appropriate package file.
-
-    $ tools/packman.sh apt extras/packagelists/ubuntu-13.10.txt
 
 Once the build environment is set up it is sufficient to run
 
@@ -98,7 +121,7 @@ operations).
 ### Reproducible "randomness"
 
 Pseudorandomness plays a very important role in the functional
-testing of microfs. Most of the data used for the tests is
+testing of `microfs`. Most of the data used for the tests is
 pseudorandomly generated and can be regenerated at any time
 if the seed that was used in the first place is known. This
 should provide a couple of major advantages:
@@ -112,7 +135,7 @@ should provide a couple of major advantages:
 
 ### Remote checks
 
-microfs supports "remote checks", which makes it easy to run
+`microfs` supports "remote checks", which makes it easy to run
 the test suite on some machine other than your primary
 workstation. Using a virtual machine is probably the best
 solution as it is very easy to reset and easier to debug if
@@ -165,9 +188,14 @@ will use block sizes 512, 1024, 2048, 4096, 8192, 16384, 32768,
 ## Performance
 
 No filesystem README would be complete without a section about
-performance. microfs is shipped with a couple of simple benchmark
+performance. `microfs` is shipped with a couple of simple benchmark
 tools which can be used to compare the performance of `microfs`,
 `cramfs` and `squashfs` for common filesystem operations.
+
+The tests are limited to image sizes that `cramfs` can handle,
+for image sizes larger than 272 mb `microfs` will quickly loose
+ground to `sqaushfs` which will easily outperform it for big
+images.
 
 ### Fairness
 
@@ -185,8 +213,7 @@ have to spend time decompressing the inode table when both
 
 Obviously every block size tested larger than `PAGE_CACHE_SIZE`
 will mostly be interesting to compare `microfs` with `squashfs`,
-`cramfs` will still use `PAGE_CACHE_SIZE` sized blocks and
-will not keep up.
+`cramfs` will still use `PAGE_CACHE_SIZE` sized blocks.
 
 The result presented by the benchmark tools is the average
 time that a test took over `N` passes. The idea is that the
@@ -194,7 +221,7 @@ average should give a more fair representation of the performance
 of the filesystem than a single pass would.
 
 Still, with all this said, it is still probably wise to consider
-the bundled benchmark tools to be biased towards making microfs
+the bundled benchmark tools to be biased towards making `microfs`
 look good, even if that is not the intention.
 
 ### Results
@@ -205,7 +232,7 @@ each result listing can be used to run the benchmark that
 generated the result in question.
 
 The test machine is a VirtualBox VM running Ubuntu 13.10
-x86-64 with 1280MB RAM and 2 virtual processors.
+x86-64 with 1024MB RAM and 1 virtual processor.
 
 The host for the test machine is an Acer Aspire 7741G with
 4096MB RAM and an Intel Core i5 CPU M 450 @ 2.40GHz with
@@ -220,57 +247,57 @@ Command:
 Result:
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.1610    sys=0.0070    user=0.0000
-        squashfs:  real=0.2280    sys=0.0160    user=0.0030
-        cramfs:    real=0.2120    sys=0.0110    user=0.0000
+        microfs:   real=0.1320    sys=0.0070    user=0.0030
+        squashfs:  real=0.1270    sys=0.0050    user=0.0040
+        cramfs:    real=0.1380    sys=0.0060    user=0.0010
 
     Test 1: find all
     Command: `find /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.0460    sys=0.0000    user=0.0000
-        squashfs:  real=0.0530    sys=0.0000    user=0.0000
-        cramfs:    real=0.0760    sys=0.0010    user=0.0000
+        microfs:   real=0.0960    sys=0.0000    user=0.0000
+        squashfs:  real=0.0880    sys=0.0000    user=0.0000
+        cramfs:    real=0.0950    sys=0.0000    user=0.0000
 
     Test 2: find files
     Command: `find /tmp/perf/tmpfs/mnt -type f`
-        microfs:   real=0.0480    sys=0.0000    user=0.0000
-        squashfs:  real=0.0510    sys=0.0000    user=0.0000
-        cramfs:    real=0.0590    sys=0.0000    user=0.0000
+        microfs:   real=0.0860    sys=0.0000    user=0.0000
+        squashfs:  real=0.0890    sys=0.0000    user=0.0000
+        cramfs:    real=0.0820    sys=0.0010    user=0.0000
 
     Test 3: seq access, seq reading
     Command: `tools/frd -e -s 1387916272 -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=12.4210    sys=9.2630    user=0.0010
-        squashfs:  real=11.8230    sys=9.0710    user=0.0010
-        cramfs:    real=11.8710    sys=8.8330    user=0.0000
+        microfs:   real=0.7490    sys=0.4960    user=0.0040
+        squashfs:  real=0.9820    sys=0.5060    user=0.0030
+        cramfs:    real=0.6350    sys=0.3880    user=0.0020
 
     Test 4: seq access, stat-only
-    Command: `tools/frd -e -s 1387916272 -N -i /tmp/perf/all-paths.txt`
-        microfs:   real=0.0100    sys=0.0000    user=0.0000
-        squashfs:  real=0.0090    sys=0.0000    user=0.0000
-        cramfs:    real=0.0080    sys=0.0000    user=0.0000
+    Command: `tools/frd -e -s 1387916272 -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
+        microfs:   real=0.0090    sys=0.0000    user=0.0000
+        squashfs:  real=0.0110    sys=0.0000    user=0.0000
+        cramfs:    real=0.0120    sys=0.0000    user=0.0000
 
     Test 5: rand access, seq reading
     Command: `tools/frd -e -s 1387916272 -R -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=11.1430    sys=8.3980    user=0.0020
-        squashfs:  real=11.5820    sys=8.9140    user=0.0040
-        cramfs:    real=11.1760    sys=8.4140    user=0.0000
+        microfs:   real=0.7530    sys=0.5060    user=0.0010
+        squashfs:  real=0.9870    sys=0.5060    user=0.0000
+        cramfs:    real=0.6320    sys=0.3980    user=0.0010
 
     Test 6: rand access, stat-only
     Command: `tools/frd -e -s 1387916272 -R -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0090    sys=0.0000    user=0.0000
+        microfs:   real=0.0100    sys=0.0000    user=0.0000
         squashfs:  real=0.0090    sys=0.0000    user=0.0000
-        cramfs:    real=0.0110    sys=0.0000    user=0.0000
+        cramfs:    real=0.0130    sys=0.0000    user=0.0000
 
     Test 7: seq access, rand reading
     Command: `tools/frd -e -s 1387916272 -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=10.0010    sys=7.6200    user=0.0010
-        squashfs:  real=11.4620    sys=8.8530    user=0.0080
-        cramfs:    real=11.8700    sys=8.8760    user=0.0040
+        microfs:   real=0.8070    sys=0.5540    user=0.0060
+        squashfs:  real=1.0600    sys=0.5550    user=0.0020
+        cramfs:    real=0.7480    sys=0.5060    user=0.0030
 
     Test 8: rand access, rand reading
     Command: `tools/frd -e -s 1387916272 -R -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=10.1940    sys=7.7250    user=0.0060
-        squashfs:  real=11.4940    sys=8.9160    user=0.0020
-        cramfs:    real=11.6400    sys=8.7620    user=0.0050
+        microfs:   real=0.8160    sys=0.5630    user=0.0030
+        squashfs:  real=1.0570    sys=0.5440    user=0.0020
+        cramfs:    real=0.7490    sys=0.5190    user=0.0050
 
 ##### Block size 131072 bytes, 10 passes
 
@@ -279,57 +306,57 @@ Command:
 Result:
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.1670    sys=0.0060    user=0.0010
-        squashfs:  real=0.1690    sys=0.0110    user=0.0000
-        cramfs:    real=0.1790    sys=0.0070    user=0.0010
+        microfs:   real=0.1310    sys=0.0100    user=0.0010
+        squashfs:  real=0.1350    sys=0.0060    user=0.0050
+        cramfs:    real=0.1320    sys=0.0070    user=0.0020
 
     Test 1: find all
     Command: `find /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.0460    sys=0.0000    user=0.0000
-        squashfs:  real=0.0460    sys=0.0000    user=0.0000
-        cramfs:    real=0.0490    sys=0.0000    user=0.0000
+        microfs:   real=0.0900    sys=0.0000    user=0.0000
+        squashfs:  real=0.0840    sys=0.0000    user=0.0000
+        cramfs:    real=0.0900    sys=0.0000    user=0.0000
 
     Test 2: find files
     Command: `find /tmp/perf/tmpfs/mnt -type f`
-        microfs:   real=0.0460    sys=0.0000    user=0.0000
-        squashfs:  real=0.0470    sys=0.0000    user=0.0000
-        cramfs:    real=0.0480    sys=0.0000    user=0.0000
+        microfs:   real=0.0820    sys=0.0000    user=0.0000
+        squashfs:  real=0.0870    sys=0.0000    user=0.0000
+        cramfs:    real=0.0870    sys=0.0000    user=0.0010
 
     Test 3: seq access, seq reading
     Command: `tools/frd -e -s 1387916272 -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.9980    sys=0.8560    user=0.0020
-        squashfs:  real=1.0360    sys=0.9400    user=0.0000
-        cramfs:    real=10.8740   sys=8.2170    user=0.0010
+        microfs:   real=0.5640    sys=0.3600    user=0.0010
+        squashfs:  real=0.8120    sys=0.3780    user=0.0000
+        cramfs:    real=0.6280    sys=0.3940    user=0.0000
 
     Test 4: seq access, stat-only
     Command: `tools/frd -e -s 1387916272 -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0080    sys=0.0000    user=0.0000
-        squashfs:  real=0.0090    sys=0.0000    user=0.0000
-        cramfs:    real=0.0090    sys=0.0000    user=0.0000
+        microfs:   real=0.0110    sys=0.0000    user=0.0000
+        squashfs:  real=0.0120    sys=0.0000    user=0.0000
+        cramfs:    real=0.0100    sys=0.0000    user=0.0000
 
     Test 5: rand access, seq reading
     Command: `tools/frd -e -s 1387916272 -R -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.9980    sys=0.8610    user=0.0000
-        squashfs:  real=1.0530    sys=0.9590    user=0.0010
-        cramfs:    real=10.7760   sys=8.1140    user=0.0010
+        microfs:   real=0.5680    sys=0.3660    user=0.0020
+        squashfs:  real=0.8210    sys=0.3870    user=0.0010
+        cramfs:    real=0.6340    sys=0.4050    user=0.0020
 
     Test 6: rand access, stat-only
     Command: `tools/frd -e -s 1387916272 -R -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0110    sys=0.0000    user=0.0000
-        squashfs:  real=0.0100    sys=0.0000    user=0.0000
-        cramfs:    real=0.0090    sys=0.0000    user=0.0000
+        microfs:   real=0.0130    sys=0.0000    user=0.0000
+        squashfs:  real=0.0120    sys=0.0000    user=0.0000
+        cramfs:    real=0.0120    sys=0.0000    user=0.0000
 
     Test 7: seq access, rand reading
     Command: `tools/frd -e -s 1387916272 -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=1.0410    sys=0.9030    user=0.0000
-        squashfs:  real=1.0900    sys=0.9760    user=0.0000
-        cramfs:    real=11.1880   sys=8.4960    user=0.0070
+        microfs:   real=0.6010    sys=0.3900    user=0.0030
+        squashfs:  real=0.8440    sys=0.3960    user=0.0060
+        cramfs:    real=0.7420    sys=0.4960    user=0.0020
 
     Test 8: rand access, rand reading
     Command: `tools/frd -e -s 1387916272 -R -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=1.0210    sys=0.8880    user=0.0020
-        squashfs:  real=1.0820    sys=0.9790    user=0.0010
-        cramfs:    real=10.9930   sys=8.3330    user=0.0040
+        microfs:   real=0.6040    sys=0.3900    user=0.0050
+        squashfs:  real=0.8560    sys=0.3950    user=0.0020
+        cramfs:    real=0.7420    sys=0.4990    user=0.0060
 
 #### 0 directories, 46 files, large files
 
@@ -340,57 +367,57 @@ Command:
 Result:
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.2080    sys=0.0070    user=0.0000
-        squashfs:  real=0.2160    sys=0.0130    user=0.0000
-        cramfs:    real=0.2260    sys=0.0070    user=0.0000
+        microfs:   real=0.1180    sys=0.0030    user=0.0010
+        squashfs:  real=0.1220    sys=0.0010    user=0.0000
+        cramfs:    real=0.1290    sys=0.0010    user=0.0000
 
     Test 1: find all
     Command: `find /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.0580    sys=0.0000    user=0.0000
-        squashfs:  real=0.0580    sys=0.0000    user=0.0000
-        cramfs:    real=0.0530    sys=0.0010    user=0.0000
+        microfs:   real=0.0850    sys=0.0000    user=0.0000
+        squashfs:  real=0.0830    sys=0.0000    user=0.0000
+        cramfs:    real=0.0920    sys=0.0000    user=0.0000
 
     Test 2: find files
     Command: `find /tmp/perf/tmpfs/mnt -type f`
-        microfs:   real=0.0540    sys=0.0000    user=0.0000
-        squashfs:  real=0.0460    sys=0.0000    user=0.0000
-        cramfs:    real=0.0500    sys=0.0000    user=0.0000
+        microfs:   real=0.0840    sys=0.0000    user=0.0000
+        squashfs:  real=0.0850    sys=0.0000    user=0.0000
+        cramfs:    real=0.0860    sys=0.0000    user=0.0000
 
     Test 3: seq access, seq reading
     Command: `tools/frd -e -s 1389877799 -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=12.0250    sys=8.9840    user=0.0010
-        squashfs:  real=11.1680    sys=8.6620    user=0.0010
-        cramfs:    real=11.4420    sys=8.5580    user=0.0010
+        microfs:   real=0.7400    sys=0.5210    user=0.0000
+        squashfs:  real=0.9980    sys=0.5190    user=0.0010
+        cramfs:    real=0.6320    sys=0.3870    user=0.0020
 
     Test 4: seq access, stat-only
-    Command: `tools/frd -e -s 1389877799 -N -i /tmp/perf/all-paths.txt`
-        microfs:   real=0.0120    sys=0.0000    user=0.0000
-        squashfs:  real=0.0070    sys=0.0000    user=0.0000
-        cramfs:    real=0.0090    sys=0.0000    user=0.0000
+    Command: `tools/frd -e -s 1389877799 -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
+        microfs:   real=0.0110    sys=0.0000    user=0.0000
+        squashfs:  real=0.0120    sys=0.0000    user=0.0000
+        cramfs:    real=0.0080    sys=0.0000    user=0.0000
 
     Test 5: rand access, seq reading
     Command: `tools/frd -e -s 1389877799 -R -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=10.8540    sys=8.2530    user=0.0010
-        squashfs:  real=10.8580    sys=8.4890    user=0.0020
-        cramfs:    real=10.6540    sys=8.0950    user=0.0010
+        microfs:   real=0.7400    sys=0.4920    user=0.0020
+        squashfs:  real=0.9940    sys=0.5100    user=0.0030
+        cramfs:    real=0.6250    sys=0.3920    user=0.0000
 
     Test 6: rand access, stat-only
     Command: `tools/frd -e -s 1389877799 -R -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0070    sys=0.0000    user=0.0000
-        squashfs:  real=0.0060    sys=0.0000    user=0.0000
-        cramfs:    real=0.0090    sys=0.0000    user=0.0000
+        microfs:   real=0.0120    sys=0.0000    user=0.0000
+        squashfs:  real=0.0100    sys=0.0000    user=0.0000
+        cramfs:    real=0.0110    sys=0.0000    user=0.0000
 
     Test 7: seq access, rand reading
     Command: `tools/frd -e -s 1389877799 -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=9.2140     sys=7.1060    user=0.0030
-        squashfs:  real=10.8770    sys=8.5130    user=0.0050
-        cramfs:    real=10.8930    sys=8.2640    user=0.0090
+        microfs:   real=0.8110    sys=0.5670    user=0.0030
+        squashfs:  real=1.0740    sys=0.5630    user=0.0030
+        cramfs:    real=0.7520    sys=0.5020    user=0.0030
 
     Test 8: rand access, rand reading
     Command: `tools/frd -e -s 1389877799 -R -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=10.3010    sys=7.7720    user=0.0030
-        squashfs:  real=10.8150    sys=8.4990    user=0.0020
-        cramfs:    real=10.7940    sys=8.1850    user=0.0040
+        microfs:   real=0.8190    sys=0.5810    user=0.0030
+        squashfs:  real=1.0760    sys=0.5940    user=0.0010
+        cramfs:    real=0.7510    sys=0.5040    user=0.0010
 
 ##### Block size 131072 bytes, 10 passes
 
@@ -399,197 +426,65 @@ Command:
 Result:
     Test 0: list all recursively
     Command: `ls -lAR /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.1690    sys=0.0040    user=0.0000
-        squashfs:  real=0.1670    sys=0.0060    user=0.0000
-        cramfs:    real=0.1820    sys=0.0040    user=0.0000
+        microfs:   real=0.1210    sys=0.0030    user=0.0000
+        squashfs:  real=0.1200    sys=0.0000    user=0.0000
+        cramfs:    real=0.1290    sys=0.0000    user=0.0010
 
     Test 1: find all
     Command: `find /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.0450    sys=0.0000    user=0.0000
-        squashfs:  real=0.0540    sys=0.0000    user=0.0000
-        cramfs:    real=0.0640    sys=0.0000    user=0.0000
+        microfs:   real=0.0840    sys=0.0000    user=0.0000
+        squashfs:  real=0.0840    sys=0.0000    user=0.0000
+        cramfs:    real=0.0900    sys=0.0000    user=0.0000
 
     Test 2: find files
     Command: `find /tmp/perf/tmpfs/mnt -type f`
-        microfs:   real=0.0440    sys=0.0000    user=0.0000
-        squashfs:  real=0.0500    sys=0.0000    user=0.0000
-        cramfs:    real=0.0520    sys=0.0000    user=0.0000
+        microfs:   real=0.0850    sys=0.0000    user=0.0000
+        squashfs:  real=0.0850    sys=0.0000    user=0.0000
+        cramfs:    real=0.0860    sys=0.0000    user=0.0000
 
     Test 3: seq access, seq reading
     Command: `tools/frd -e -s 1389877799 -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.9330    sys=0.8140    user=0.0000
-        squashfs:  real=1.0260    sys=0.9280    user=0.0000
-        cramfs:    real=11.2580   sys=8.4820    user=0.0010
+        microfs:   real=0.5590    sys=0.3470    user=0.0010
+        squashfs:  real=0.8020    sys=0.3670    user=0.0000
+        cramfs:    real=0.6250    sys=0.3870    user=0.0010
 
     Test 4: seq access, stat-only
     Command: `tools/frd -e -s 1389877799 -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0090    sys=0.0000    user=0.0000
-        squashfs:  real=0.0060    sys=0.0000    user=0.0000
-        cramfs:    real=0.0080    sys=0.0000    user=0.0000
-
-    Test 5: rand access, seq reading
-    Command: `tools/frd -e -s 1389877799 -R -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.9430    sys=0.8150    user=0.0000
-        squashfs:  real=0.9870    sys=0.9040    user=0.0000
-        cramfs:    real=11.0770   sys=8.3710    user=0.0020
-
-    Test 6: rand access, stat-only
-    Command: `tools/frd -e -s 1389877799 -R -N -i /tmp/perf/all-paths.txt`
-        microfs:   real=0.0080    sys=0.0000    user=0.0000
-        squashfs:  real=0.0120    sys=0.0000    user=0.0000
-        cramfs:    real=0.0080    sys=0.0000    user=0.0000
-
-    Test 7: seq access, rand reading
-    Command: `tools/frd -e -s 1389877799 -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.9800    sys=0.8560    user=0.0020
-        squashfs:  real=1.0950    sys=0.9580    user=0.0010
-        cramfs:    real=11.3550   sys=8.6180    user=0.0030
-
-    Test 8: rand access, rand reading
-    Command: `tools/frd -e -s 1389877799 -R -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=1.0070    sys=0.8750    user=0.0010
-        squashfs:  real=1.0330    sys=0.9260    user=0.0020
-        cramfs:    real=11.4580   sys=8.6770    user=0.0060
-
-### Official results from the ministry of thruth
-
-Benchmarks tweaked to make microfs look a little better.
-
-#### 19 directories, 337 files, small files
-
-##### Block size 1048576 bytes, 10 passes, data compressed for speed
-
-Command:
-	$ tools/rofsbench.sh -n 10 -r 1387916272 -b 1048576 \
-	>     -m "-c speed" -w /tmp/perf/
-Result:
-    Test 0: list all recursively
-    Command: `ls -lAR /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.1980    sys=0.0060    user=0.0020
-        squashfs:  real=0.1950    sys=0.0080    user=0.0020
-        cramfs:    real=0.2680    sys=0.0090    user=0.0040
-
-    Test 1: find all
-    Command: `find /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.0580    sys=0.0000    user=0.0000
-        squashfs:  real=0.0800    sys=0.0000    user=0.0000
-        cramfs:    real=0.0580    sys=0.0010    user=0.0000
-
-    Test 2: find files
-    Command: `find /tmp/perf/tmpfs/mnt -type f`
-        microfs:   real=0.0490    sys=0.0000    user=0.0000
-        squashfs:  real=0.0450    sys=0.0000    user=0.0000
-        cramfs:    real=0.0470    sys=0.0000    user=0.0000
-
-    Test 3: seq access, seq reading
-    Command: `tools/frd -e -s 1387916272 -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.7910    sys=0.6730    user=0.0000
-        squashfs:  real=0.9060    sys=0.7620    user=0.0000
-        cramfs:    real=11.2860   sys=8.5870    user=0.0000
-
-    Test 4: seq access, stat-only
-    Command: `tools/frd -e -s 1387916272 -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
         microfs:   real=0.0120    sys=0.0000    user=0.0000
-        squashfs:  real=0.0070    sys=0.0000    user=0.0000
-        cramfs:    real=0.0110    sys=0.0000    user=0.0000
-
-    Test 5: rand access, seq reading
-    Command: `tools/frd -e -s 1387916272 -R -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.8170    sys=0.7020    user=0.0000
-        squashfs:  real=0.9930    sys=0.8600    user=0.0030
-        cramfs:    real=10.9090   sys=8.3470    user=0.0000
-
-    Test 6: rand access, stat-only
-    Command: `tools/frd -e -s 1387916272 -R -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0100    sys=0.0000    user=0.0000
-        squashfs:  real=0.0120    sys=0.0000    user=0.0000
-        cramfs:    real=0.0100    sys=0.0000    user=0.0000
-
-    Test 7: seq access, rand reading
-    Command: `tools/frd -e -s 1387916272 -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.8250    sys=0.7070    user=0.0020
-        squashfs:  real=0.8900    sys=0.7510    user=0.0040
-        cramfs:    real=11.4610   sys=8.7920    user=0.0060
-
-    Test 8: rand access, rand reading
-    Command: `tools/frd -e -s 1387916272 -R -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.8030    sys=0.6990    user=0.0010
-        squashfs:  real=1.0430    sys=0.9030    user=0.0070
-        cramfs:    real=11.3170   sys=8.6630    user=0.0040
-
-#### 0 directories, 46 files, large files
-
-##### Block size 1048576 bytes, 10 passes, data compressed for speed
-
-Command:
-    $ tools/rofsbench.sh -n 10 -r 1389877799 -b 1048576 \
-	>     -m "-c speed" -w /tmp/perf/
-Result:
-    Test 0: list all recursively
-    Command: `ls -lAR /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.1900    sys=0.0070    user=0.0000
-        squashfs:  real=0.1840    sys=0.0080    user=0.0000
-        cramfs:    real=0.2190    sys=0.0030    user=0.0000
-
-    Test 1: find all
-    Command: `find /tmp/perf/tmpfs/mnt`
-        microfs:   real=0.0440    sys=0.0000    user=0.0000
-        squashfs:  real=0.0530    sys=0.0000    user=0.0000
-        cramfs:    real=0.0650    sys=0.0000    user=0.0000
-
-    Test 2: find files
-    Command: `find /tmp/perf/tmpfs/mnt -type f`
-        microfs:   real=0.0460    sys=0.0000    user=0.0010
-        squashfs:  real=0.0440    sys=0.0000    user=0.0000
-        cramfs:    real=0.0470    sys=0.0000    user=0.0000
-
-    Test 3: seq access, seq reading
-    Command: `tools/frd -e -s 1389877799 -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.7630    sys=0.6570    user=0.0010
-        squashfs:  real=0.8860    sys=0.7390    user=0.0010
-        cramfs:    real=10.9240   sys=8.3200    user=0.0000
-
-    Test 4: seq access, stat-only
-    Command: `tools/frd -e -s 1389877799 -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0100    sys=0.0000    user=0.0000
         squashfs:  real=0.0100    sys=0.0000    user=0.0000
-        cramfs:    real=0.0070    sys=0.0000    user=0.0000
+        cramfs:    real=0.0130    sys=0.0000    user=0.0000
 
     Test 5: rand access, seq reading
     Command: `tools/frd -e -s 1389877799 -R -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.7440    sys=0.6430    user=0.0020
-        squashfs:  real=0.8720    sys=0.7210    user=0.0020
-        cramfs:    real=10.6410   sys=8.1390    user=0.0020
+        microfs:   real=0.5620    sys=0.3560    user=0.0010
+        squashfs:  real=0.8030    sys=0.3650    user=0.0020
+        cramfs:    real=0.6270    sys=0.3950    user=0.0020
 
     Test 6: rand access, stat-only
     Command: `tools/frd -e -s 1389877799 -R -N -i /tmp/perf/tmpfs/tmp/all-paths.txt`
-        microfs:   real=0.0050    sys=0.0000    user=0.0000
-        squashfs:  real=0.0100    sys=0.0000    user=0.0000
+        microfs:   real=0.0110    sys=0.0000    user=0.0000
+        squashfs:  real=0.0070    sys=0.0000    user=0.0000
         cramfs:    real=0.0120    sys=0.0000    user=0.0000
 
     Test 7: seq access, rand reading
     Command: `tools/frd -e -s 1389877799 -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.7730    sys=0.6680    user=0.0030
-        squashfs:  real=0.9240    sys=0.7510    user=0.0030
-        cramfs:    real=11.1020   sys=8.5530    user=0.0010
+        microfs:   real=0.6020    sys=0.3860    user=0.0000
+        squashfs:  real=0.8490    sys=0.4010    user=0.0010
+        cramfs:    real=0.7510    sys=0.5160    user=0.0000
 
     Test 8: rand access, rand reading
     Command: `tools/frd -e -s 1389877799 -R -r -i /tmp/perf/tmpfs/tmp/file-paths.txt`
-        microfs:   real=0.8120    sys=0.6890    user=0.0040
-        squashfs:  real=0.9200    sys=0.7590    user=0.0030
-        cramfs:    real=10.6140   sys=8.1740    user=0.0060
+        microfs:   real=0.6050    sys=0.3910    user=0.0010
+        squashfs:  real=0.8500    sys=0.4020    user=0.0010
+        cramfs:    real=0.7520    sys=0.4970    user=0.0010
 
 ## A small list of mixed TODOs, FIXMEs, WTFs and the sort.
 
- * Complete the most important parts of README.md.
- * The pseudorandomness is not reproducible enough?
+ * Is the pseudorandomness reproducible enough?
  * Add support for `mkrandtree.py` to generate "less random"
    data which will compress acceptably well.
- * The `lkm` support mount options, but they have not actually
-   been tested. It should work! But I would not bet money
-   on it...
  * Directories are structured and read just like they are in
-   cramfs. This is probably a good thing, but no thought or
+   `cramfs`. This is probably a good thing, but no thought or
    effort at all has been put into investigating if that is
    true (so far).
  * `microfsmki` and `microfscki` both require high amount of
@@ -600,7 +495,11 @@ Result:
    plenty of RAM. It is however possible that the memory
    requirement is unreasonable, if so, it should be possible
    to rewrite them.
- * Fix `make install`, write `make uninstall`.
+ * The devtable support seems to be quite buggy when tested
+   on real machines (non-virtual).
+ * There seems to be something wrong with the performance
+   tests, the results seem *very inconsistent* when compared
+   between virtual and real machines.
 
 ## Ideas for possible future development
 
@@ -608,5 +507,3 @@ Result:
  * Add support for compressed metadata?
  * Implement per-cpu decompression to improve performance for
    parallel I/O?
- * Test the "As easy as Pi"-idea (that Raspberry Pi is a good
-   unit to test/benchmark changes against)?
