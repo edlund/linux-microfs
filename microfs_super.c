@@ -31,18 +31,21 @@ static const struct super_operations microfs_s_ops;
 enum {
 	Opt_metadata_blkptrbufsz,
 	Opt_metadata_dentrybufsz,
-	Opt_debug_mountid
+	Opt_debug_mountid,
+	Opt_debug_cksig
 };
 
 static const match_table_t microfs_tokens = {
 	{ Opt_metadata_blkptrbufsz, "metadata_blkptrbufsz=%u" },
 	{ Opt_metadata_dentrybufsz, "metadata_dentrybufsz=%u" },
-	{ Opt_debug_mountid, "debug_mountid=%u" }
+	{ Opt_debug_mountid, "debug_mountid=%u" },
+	{ Opt_debug_cksig, "debug_cksig" }
 };
 
 struct microfs_mount_options {
 	__u64 mo_metadata_blkptrbufsz;
 	__u64 mo_metadata_dentrybufsz;
+	int mo_debug_cksig;
 };
 
 static __u64 microfs_select_bufsz(const char* const name, int requested,
@@ -54,8 +57,8 @@ static __u64 microfs_select_bufsz(const char* const name, int requested,
 		return minimum;
 	}
 	if (requested % PAGE_CACHE_SIZE != 0) {
-		pr_warn("%s=%d, but it must be a multiple of %llu\n",
-			name, requested, (__u64)PAGE_CACHE_SIZE);
+		pr_warn("%s=%d, but it must be a multiple of %u\n",
+			name, requested, (__u32)PAGE_CACHE_SIZE);
 	}
 	return sz_blkceil(requested, PAGE_CACHE_SIZE);
 }
@@ -94,6 +97,8 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 					return 0;
 				pr_info("debug_mountid=%d\n", option);
 				break;
+			case Opt_debug_cksig:
+				mount_opts->mo_debug_cksig = 1;
 			default:
 				return 0;
 			
@@ -174,6 +179,7 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 	 */
 	mount_opts.mo_metadata_blkptrbufsz = PAGE_CACHE_SIZE * 2;
 	mount_opts.mo_metadata_dentrybufsz = PAGE_CACHE_SIZE * 2;
+	mount_opts.mo_debug_cksig = 0;
 	
 	if (!microfs_parse_options(data, sbi, &mount_opts)) {
 		pr_err("failed to parse mount options\n");
@@ -217,6 +223,17 @@ sb_retry:
 		goto sb_retry;
 	}
 	pr_devel("found superblock at offset 0x%x\n", sb_padding);
+	
+	if (mount_opts.mo_debug_cksig) {
+		if (memcmp(msb->s_signature, MICROFS_SIGNATURE, sizeof(msb->s_signature)) != 0) {
+			pr_err("superblock at offset 0x%x has an invalid signature"
+					" (it should be \"%s\")\n",
+				sb_padding, MICROFS_SIGNATURE);
+			err = -EINVAL;
+			goto err_sb;
+		}
+		pr_devel("superblock signature is ok\n");
+	}
 	
 	if (sb_unsupportedflags(msb)) {
 		pr_err("unsupported filesystem features\n");
