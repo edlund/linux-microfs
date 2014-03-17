@@ -20,6 +20,8 @@
 
 #include <linux/compiler.h>
 
-#if !defined(GCC_VERSION) || (GCC_VERSION < 40700)
-#warning "unsupported compiler - here be dragons"
+#if !defined(GCC_VERSION)
+#warning "unsupported compiler, here be dragons"
+#elif GCC_VERSION < 40700
+#warning "gcc v.4.7.0 or higher is recommended"
 #endif
