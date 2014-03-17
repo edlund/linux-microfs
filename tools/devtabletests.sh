@@ -81,6 +81,7 @@ atexit_0 rmdir "${img_mount}"
 mk_cmd="${mk_cmd} -D \"${devtable_path}\" \"${img_src}\" \"${img_path}\""
 mount_cmd="sudo mount -t ${filesystem} -o loop -r \"${img_path}\" \"${img_mount}\""
 eval "${mk_cmd}"
+atexit_0 rm "${img_path}"
 eval "${mount_cmd}"
 atexit sudo umount "${img_mount}"
 
