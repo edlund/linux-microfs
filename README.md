@@ -44,12 +44,12 @@ The difference between `cramfs` and `microfs` lies in that `microfs`
 
 ## Licensing
 
-Most of `microfs` is GPL v.2, just like the Linux kernel. There
-are however a few utilities which might be useful outside of
-the project and are licensed under the new BSD license. Check
-the copyright and license notice at the top of the file to know
-what license a specific file is under. GPL v.2 will apply if no
-license is explicitly specified in a file.
+Most of `microfs` is licensed under the GPL. There are however
+a few utilities which might be useful outside of the project
+and are licensed under the new BSD license. Check the copyright
+and license notice at the top of the file to know what license a
+specific file is under. GPL will apply if no license is
+explicitly specified in a file.
 
 ## Linux kernel compatibility
 
