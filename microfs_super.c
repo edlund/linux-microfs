@@ -184,7 +184,7 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 	if (!microfs_parse_options(data, sbi, &mount_opts)) {
 		pr_err("failed to parse mount options\n");
 		err = -EINVAL;
-		goto err_opts;
+		goto err_sbi;
 	}
 	
 	if (sb->s_bdev->bd_inode->i_size % PAGE_CACHE_SIZE != 0) {
@@ -334,7 +334,6 @@ err_sbi:
 	kfree(sbi);
 	sbi = NULL;
 	pr_err("failed to fill super block 0x%p\n", sb);
-err_opts:
 	return err;
 }
 
