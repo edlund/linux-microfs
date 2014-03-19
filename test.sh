@@ -29,8 +29,10 @@ conf_quicktest="no"
 conf_stresstest="no"
 conf_usetempmnt="yes"
 conf_tempmnt="size=448M,nr_inodes=32k,mode=0755"
+conf_sizebudget="134217728"
 conf_randomseed="`date +%s`"
-options="QSMm:r:c:"
+conf_checksum="sha512sum"
+options="QSMm:b:r:C:c:"
 while getopts $options option
 do
 	case $option in
@@ -38,7 +40,9 @@ do
 		S ) conf_stresstest="yes" ;;
 		M ) conf_usetempmnt="no" ;;
 		m ) conf_tempmnt=$OPTARG ;;
+		b ) conf_sizebudget=$OPTARG ;;
 		r ) conf_randomseed=$OPTARG ;;
+		C ) conf_checksum=$OPTARG ;;
 		c ) src_cmds+=("${OPTARG}") ;;
 	esac
 done
@@ -49,8 +53,11 @@ src_cmds+=(
 	"${script_dir}/tools/mklndir.sh"
 	"${script_dir}/tools/mkmbdentdir.sh"
 	"${script_dir}/tools/mkpow2dir.py"
-	"${script_dir}/tools/mkholedir.py --random-seed=${conf_randomseed}"
-	"${script_dir}/tools/mkrandtree.py --random-seed=${conf_randomseed}"
+	"${script_dir}/tools/mkholedir.py \
+--random-seed=${conf_randomseed}"
+	"${script_dir}/tools/mkrandtree.py \
+--random-seed=${conf_randomseed} \
+--size-budget=${conf_sizebudget}"
 )
 
 # Rely on the credentials being cached after the first sudo.
@@ -65,6 +72,8 @@ echo "$0: quick test? ${conf_quicktest}"
 echo "$0: stress test? ${conf_stresstest}"
 echo "$0: use tmpfs? ${conf_usetempmnt}"
 echo "$0: random seed is \"${conf_randomseed}\""
+echo "$0: size budget is \"${conf_sizebudget}\""
+echo "$0: checksum program is \"${conf_checksum}\""
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
 atexit_0 rm -rf "${temp_dir}"
@@ -266,8 +275,7 @@ done
 all_options=("${all_options[@]}" "${all_options[@]/%/ -p}")
 
 for src_cmd in "${src_cmds[@]}" ; do
-	src_dir=`basename "${src_cmd}"`
-	src_dir="${src_dir//[^-a-zA-Z0-9]/_}"
+	src_dir="${src_cmd//[^-a-zA-Z0-9]/_}"
 	img_src="${temp_dir}/${src_dir}"
 	echo "$0: Running \"${src_cmd}\" to create \"${img_src}\"..."
 	eval "${src_cmd} \"${img_src}\""
@@ -286,6 +294,7 @@ for src_cmd in "${src_cmds[@]}" ; do
 			"-x \"-x\""
 			"-i \"${src_cmd}\""
 			"-r \"${conf_randomseed}\""
+			"-C \"${conf_checksum}\""
 			"${conf_stresstest}"
 		)
 		image_cmd="${script_dir}/tools/imgmkckver.sh ${image_params[@]}"

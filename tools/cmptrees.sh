@@ -24,8 +24,9 @@ dir_a=""
 dir_b=""
 write_err=""
 write_path=""
+checksum_prog="sha512sum"
 
-options="ew:a:b:"
+options="ew:a:b:c:"
 while getopts $options option
 do
 	case $option in
@@ -33,13 +34,15 @@ do
 		w ) write_path=$OPTARG ;;
 		a ) dir_a=$OPTARG ;;
 		b ) dir_b=$OPTARG ;;
+		c ) checksum_prog=$OPTARG ;;
 	esac
 done
 
 if [[ ! -d "${dir_a}" || ! -d "${dir_b}" || \
-	( "${write_path}" == "" && "${write_err}" != "" ) ]] ; then
+	( "${write_path}" == "" && "${write_err}" != "" ) || \
+	"${checksum_prog}" == "" ]] ; then
 	cat <<EOF
-Usage: `basename $0` -a:b: [-w:e]
+Usage: `basename $0` -a:b: [-c:w:e]
 
 Diff two directory trees by comparing sha512 checksums and
 stat info.
@@ -47,15 +50,16 @@ stat info.
     -a <str>   path to the first dir
     -b <str>   path to the second dir
     -w <str>   path to where the result should be saved
+    -c <str>   name of the checksum program to use
     -e         only write info files when an error occurs (depends on -w)
 EOF
 	exit 1
 fi
 
 examine() {
-	local wd=`pwd`
+	local wd="`pwd`"
 	cd $1
-	find . -type f -not -empty -exec sha512sum {} \; | sort
+	find . -type f -not -empty -exec ${checksum_prog} {} \; | sort
 	find . -not -empty -exec stat -c '{} %A %U:%G' {} \; | sort
 	cd $wd
 }

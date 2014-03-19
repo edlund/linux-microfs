@@ -29,9 +29,10 @@ img_prefix=""
 extract_arg=""
 img_src=""
 rand_seed="`date +%s`"
+checksum_prog=""
 stress_test=0
 
-options="t:m:c:s:d:p:x:i:r:S"
+options="t:m:c:s:d:p:x:i:r:C:S"
 while getopts $options option
 do
 	case $option in
@@ -44,15 +45,17 @@ do
 		x ) extract_arg=$OPTARG ;;
 		i ) img_src=$OPTARG ;;
 		r ) rand_seed=$OPTARG ;;
+		C ) checksum_prog=$OPTARG ;;
 		S ) stress_test=1 ;;
 	esac
 done
 
 if [[ ! -d "${src_dir}" || ! -d "${dest_dir}" || \
 		-z "${mk_cmd}" || -z "${ck_cmd}" || -z "${img_src}" || \
-		-z "${mount_type}" || ! ( "${rand_seed}" =~ ^[0-9]+$ ) ]] ; then
+		-z "${mount_type}" || ! ( "${rand_seed}" =~ ^[0-9]+$ ) || \
+		-z "${checksum_prog}" ]] ; then
 	cat <<EOF
-Usage: `basename $0` -t:m:c:s:d:x:k: [-r:S]
+Usage: `basename $0` -t:m:c:s:d:x:k:C: [-r:S]
 
 Create a file system image, check it, mount it and compare
 it against its source, all in one (long) command.
@@ -64,8 +67,9 @@ it against its source, all in one (long) command.
     -d <str>    destination to write all files to
     -p <str>    prefix for the image filename
     -x <str>    extract arg name to give to the check command (if any)
-    -i <str>    the source of -s, either a path or a command
+    -i <str>    the source of -s, the command that created it
     -r <int>    seed for random generators (only matters with -S)
+    -C <str>    checksum program to use
     -S          stress test (very time and resource consuming)
 EOF
 	exit 1
@@ -91,7 +95,7 @@ eval "${mk_cmd} \"${src_dir}\" \"${img_file}\" 1>\"${cmd_log}.mk.1\" 2>\"${cmd_l
 eval "${ck_cmd} \"${img_file}\" 1>\"${cmd_log}.ck.1\" 2>\"${cmd_log}.ck.2\""
 
 if [ -d "${extract_dir}" ] ; then
-	eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\""
+	eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\" -c \"${checksum_prog}\""
 	rm -rf "${extract_dir}"
 fi
 
@@ -125,7 +129,7 @@ if [[ $stress_test -ne 0 ]] ; then
 	eval "atexit ${stress_stop_cmd}"
 fi
 
-eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${img_mount}\" -e -w \"${dest_dir}\""
+eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${img_mount}\" -e -w \"${dest_dir}\" -c \"${checksum_prog}\""
 eval "${script_dir}/rofstests.py \"${img_mount}\""
 
 eval "${script_dir}/logck.sh -l \"${cmd_log}\" -s \"${img_src}\" -m \"${img_mountid}\""
