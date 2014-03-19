@@ -40,7 +40,10 @@ mkopts_cramfs=""
 mkopts_microfs=""
 mkopts_squashfs="-noI"
 
-options="w:n:b:r:B:m:c:s:TV"
+load_cramfs=1
+load_squashfs=1
+
+options="w:n:b:r:B:m:c:s:TVCS"
 while getopts $options option
 do
 	case $option in
@@ -54,6 +57,8 @@ do
 		s ) mkopts_squashfs=$OPTARG ;;
 		T ) log_file_truncate=0 ;;
 		V ) log_file_view=0 ;;
+		C ) load_cramfs=0 ;;
+		S ) load_squashfs=0 ;;
 	esac
 done
 
@@ -80,6 +85,8 @@ Run some simple benchmarks using microfs, cramfs and squashfs.
     -s <str>   args to mksquashfs
     -T         do NOT truncate the log file
     -V         do NOT generate a view of the log file
+    -C         do NOT load cramfs
+    -S         do NOT load squashfs
 EOF
 	exit 1
 fi
@@ -101,11 +108,20 @@ echo "$0: `uname -s -r -i` benchmark @ `date "+%Y-%m-%d %H:%M:%S"`"
 echo "$0: root required"
 sudo true
 
-sudo insmod "`dirname "${script_dir}"`/microfs.ko"
-atexit sudo rmmod microfs
+if [[ "`lsmod | grep 'microfs'`" == "" ]] ; then
+	echo "$0: inserting microfs.ko"
+	sudo insmod "`dirname "${script_dir}"`/microfs.ko"
+	atexit sudo rmmod microfs
+else
+	echo "$0: microfs.ko already inserted"
+fi
 
-modinfo cramfs > /dev/null
-modinfo squashfs > /dev/null
+if [[ $load_cramfs -eq 1 ]] ; then
+	modprobe cramfs
+fi
+if [[ $load_squashfs -eq 1 ]] ; then
+	modprobe squashfs
+fi
 
 # Trim any trailing slashes.
 work_dir=`echo "${work_dir}" | sed 's:/*$::'`
