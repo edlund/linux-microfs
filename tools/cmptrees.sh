@@ -40,6 +40,7 @@ done
 
 if [[ ! -d "${dir_a}" || ! -d "${dir_b}" || \
 	( "${write_path}" == "" && "${write_err}" != "" ) || \
+	( "${write_path}" != "" && ! -d "${write_path}" ) || \
 	"${checksum_prog}" == "" ]] ; then
 	cat <<EOF
 Usage: `basename $0` -a:b: [-c:w:e]
@@ -58,17 +59,17 @@ fi
 
 examine() {
 	local wd="`pwd`"
-	cd $1
+	cd "$1"
 	find . -type f -not -empty -exec ${checksum_prog} {} \; | sort
 	find . -not -empty -exec stat -c '{} %A %U:%G' {} \; | sort
-	cd $wd
+	cd "$wd"
 }
 
-dir_a_info=`examine ${dir_a}`
-dir_b_info=`examine ${dir_b}`
+dir_a_info="`examine "${dir_a}"`"
+dir_b_info="`examine "${dir_b}"`"
 
 untrap_ERR
-diff=`diff -Nu <(echo "${dir_a_info}" ) <(echo "${dir_b_info}")`
+diff="`diff -Nu <(echo "${dir_a_info}" ) <(echo "${dir_b_info}")`"
 trap_ERR
 
 if [[ ! -z "${write_path}" && ( "${write_err}" == "" || \
