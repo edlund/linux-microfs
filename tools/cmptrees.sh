@@ -69,7 +69,7 @@ dir_a_info="`examine "${dir_a}"`"
 dir_b_info="`examine "${dir_b}"`"
 
 untrap_ERR
-diff="`diff -Nu <(echo "${dir_a_info}" ) <(echo "${dir_b_info}")`"
+diff="`diff -Nu <(echo "${dir_a_info}") <(echo "${dir_b_info}")`"
 trap_ERR
 
 if [[ ! -z "${write_path}" && ( "${write_err}" == "" || \
