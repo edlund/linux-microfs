@@ -37,6 +37,8 @@ __MICROFS_BEGIN_EXTERN_C
 #include <linux/fs.h>
 #include <linux/types.h>
 
+#include "microfs_flags.h"
+
 #ifdef __KERNEL__
 
 #include <linux/blkdev.h>
@@ -47,7 +49,6 @@ __MICROFS_BEGIN_EXTERN_C
 #include <linux/string.h>
 #include <linux/time.h>
 #include <linux/vfs.h>
-#include <linux/zlib.h>
 
 #include "microfs_compat.h"
 
@@ -60,10 +61,6 @@ __MICROFS_BEGIN_EXTERN_C
 #define pr_spam(fmt, ...)
 #endif
 #endif
-
-#else
-
-#include <zlib.h>
 
 #endif
 
@@ -282,9 +279,47 @@ struct microfs_sb_info {
 	struct microfs_data_buffer si_filedatabuf;
 	/* Read mutex. */
 	struct mutex si_rdmutex;
-	/* zlib stream. */
-	struct z_stream_s si_rdzstream;
+	/* Block data decompressor. */
+	const struct microfs_decompressor* si_decompressor;
+	/* Block data decompressor private storage. */
+	void* si_decompressor_data;
 };
+
+/* A data block decompression abstraction.
+ */
+struct microfs_decompressor {
+	/* Decompressor id. */
+	const int dc_id;
+	/* Decompressor compiled? */
+	const int dc_compiled;
+	/* Human readable name. */
+	const char* dc_name;
+	/* Allocate the necessary private data. */
+	int (*dc_init)(struct microfs_sb_info* sbi);
+	/* Free private data. */
+	int (*dc_end)(struct microfs_sb_info* sbi);
+	/* Reset the decompressor. */
+	int (*dc_reset)(struct microfs_sb_info* sbi);
+	/* Prepare the decompressor for %__microfs_copy_filedata_2step.*/
+	int (*dc_2step_prepare)(struct microfs_sb_info* sbi);
+	/* Prepare the decompressor for %__microfs_copy_filedata_direct.*/
+	int (*dc_direct_prepare)(struct microfs_sb_info* sbi);
+	/* Should %__microfs_copy_filedata_direct provide a new page? */
+	int (*dc_direct_nextpage)(struct microfs_sb_info* sbi);
+	/* Use the page data given by %__microfs_copy_filedata_direct. */
+	int (*dc_direct_pagedata)(struct microfs_sb_info* sbi, void* page_data);
+	/* Check if the result from a %do_decompress call is erroneous. */
+	int (*dc_erroneous)(struct microfs_sb_info* sbi, int* err, int* implerr);
+	/* Decompress the data stored in the given buffer heads. */
+	int (*dc_decompress)(struct microfs_sb_info* sbi,
+		struct buffer_head** bhs, __u32 nbhs, __u32* length,
+		__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr);
+	/* Continue decompressing? */
+	int (*dc_continue)(struct microfs_sb_info* sbi,
+		int err, int implerr, __u32 length, int more_avail_out);
+};
+
+extern const struct microfs_decompressor decompressor_zlib;
 
 static inline struct microfs_sb_info* MICROFS_SB(struct super_block* sb)
 {
@@ -339,34 +374,17 @@ void* __microfs_read(struct super_block* sb,
  */
 int __microfs_readpage(struct file* file, struct page* page);
 
-int microfs_inflate_init(struct microfs_sb_info* sbi);
-
-void microfs_inflate_end(struct microfs_sb_info* sbi);
-
-void __microfs_inflate_reset(struct microfs_sb_info* sbi);
-
-int __microfs_inflate_bhs(struct microfs_sb_info* sbi,
-	struct buffer_head** bhs, __u32 nbhs, __u32* length,
-	__u32* bh, __u32* bh_offset, __u32* inflated, int* zerr);
-
-int __microfs_inflate_more(int err, int zerr, struct z_stream_s* zstrm,
-	__u32 length, int more_avail_out);
+/* Init the decompressor for %sbi.
+ */
+int microfs_decompressor_init(struct microfs_sb_info* sbi);
 
 #endif
-
-/* Feature flag ranges:
- * 
- * 0x00000000 - 0x000000ff: Features which will work with
- *                          all past kernels.
- * 0x00000100 - 0xffffffff: Features which will NOT work
- *                          with all past kernels.
- */
 
 /* Determine if %sb->s_flags specifies unknown flags.
  */
 static inline int sb_unsupportedflags(const struct microfs_sb* const sb)
 {
-	return __le32_to_cpu(sb->s_flags) & ~(0x000000ff);
+	return __le32_to_cpu(sb->s_flags) & ~(MICROFS_SUPPORTED_FLAGS);
 }
 
 __MICROFS_END_EXTERN_C

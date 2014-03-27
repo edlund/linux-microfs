@@ -19,6 +19,7 @@
 // microfs make image
 
 #include "hostprogs.h"
+#include "hostprogs_lib.h"
 #include "microfs.h"
 
 #include "dev.h"
@@ -86,8 +87,6 @@ struct imgspec {
 	int sp_incsocks;
 	/* Make everything owned by root. */
 	int sp_squashperms;
-	/* zlib compression level. */
-	int sp_compresslvl;
 	/* Host page size. */
 	__u64 sp_pagesz;
 	/* Left shift for the block size. */
@@ -122,6 +121,10 @@ struct imgspec {
 	struct entry* sp_root;
 	/* Stack of all regular files, used to find duplicates. */
 	struct hostprog_stack* sp_regstack;
+	/* Compression library to use. */
+	const struct hostprog_lib* sp_lib;
+	/* Private data for the compression library. */
+	void* sp_lib_data;
 };
 
 /* Set the uid or gid for the given entry and check for
@@ -177,7 +180,7 @@ static __u64 update_upperbound(struct imgspec* const spec,
 		spec->sp_datasz += ent->e_size;
 		spec->sp_realdatasz += ent->e_size;
 		spec->sp_upperbound += (MICROFS_IOFFSET_WIDTH / 8) * ent->e_blkptrs
-			+ compressBound(spec->sp_blksz) * blks;
+			+ spec->sp_lib->hl_upperbound(spec->sp_lib_data, spec->sp_blksz) * blks;
 	}
 	
 	if (++spec->sp_files > MICROFS_MAXFILES)
@@ -383,7 +386,7 @@ static void write_superblock(struct imgspec* const spec, char* base,
 	}
 	sb->s_ctime = __cpu_to_le32(nowish.tv_sec);
 	
-	__u32 flags = 0;
+	__u32 flags = spec->sp_lib->hl_id;
 	
 	sb->s_flags = __cpu_to_le32(flags);
 	
@@ -400,8 +403,7 @@ static void write_superblock(struct imgspec* const spec, char* base,
 	/* With everything in place it is possible to calculate the
 	 * crc32 checksum for the image.
 	 */
-	__u32 crc = crc32(0L, Z_NULL, 0);
-	crc = crc32(crc, (Bytef*)base + padding, sz - padding);
+	__u32 crc = hostprog_lib_zlib_crc32(base + padding, sz - padding);
 	sb->s_crc = __cpu_to_le32(crc);
 	
 	message(VERBOSITY_0, "CRC: %x", crc);
@@ -537,24 +539,28 @@ static void pack_data(struct imgspec* const spec, struct entry* ent,
 	pack_data_blkptr(base, blkptr_offset, data_offset);
 	
 	do {
-		uLongf compr_sz = spec->sp_compressionbufsz;
-		uLongf compr_input = ent_sz > spec->sp_blksz? spec->sp_blksz: ent_sz;
+		__u32 compr_sz = spec->sp_compressionbufsz;
+		__u32 compr_input = ent_sz > spec->sp_blksz? spec->sp_blksz: ent_sz;
 		ent_sz -= compr_input;
 		
-		int err = compress2((Bytef*)spec->sp_compressionbuf, &compr_sz,
-			(Bytef*)ent_data, compr_input, spec->sp_compresslvl);
-		if (err != Z_OK) {
+		int implerr = 0;
+		int err = spec->sp_lib->hl_compress(spec->sp_lib_data,
+			spec->sp_compressionbuf, &compr_sz,
+			ent_data, compr_input,
+			&implerr);
+		if (err < 0) {
 			error("compression failed for \"%s\": %s", ent->e_path,
-				zError(err));
+				spec->sp_lib->hl_strerror(spec->sp_lib_data, implerr));
 		}
 		
-		if (spec->sp_compresslvl != Z_NO_COMPRESSION && compr_sz >= compr_input) {
+		if (compr_sz >= compr_input) {
 			message(VERBOSITY_2, ">>> data from offset %llu to %llu in \"%s\""
 				" \"compressed\" from %zu bytes to %zu bytes",
 				(__u64)(ent_data - ent->e_data),
 				(__u64)(ent_data + compr_input - ent->e_data),
 				ent->e_path, (size_t)compr_input, (size_t)compr_sz);
 		}
+		
 		if (*data_offset + compr_sz > spec->sp_upperbound) {
 			/* This can only happen if sp_upperbound was truncated to
 			 * MICROFS_MAXIMGSIZE in create_imgspec(), otherwise it is
@@ -820,7 +826,7 @@ static void usage(const char* const exe, FILE* const dest,
 		" -u <int>    artificial upper bound given in bytes\n"
 		" -P <int>    pad image size to a multiple of the given power of two (default=%llu)\n"
 		" -n <str>    give the image a name\n"
-		" -c <str>    zlib compression level: none, default, speed, size\n"
+		" -c <str>    compression library to use (default=zlib)\n"
 		" -D <str>    use the given file as a device table\n"
 		" dirname     root of the directory tree to be compressed\n"
 		" outfile     image output file\n"
@@ -844,7 +850,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	
 	spec->sp_name = MICROFS_DEFAULTNAME;
 	spec->sp_shareblocks = 1;
-	spec->sp_compresslvl = Z_BEST_COMPRESSION;
+	spec->sp_lib = &hostprog_lib_zlib;
 	
 	/* The page size of the host is a good default block size.
 	 */
@@ -912,18 +918,9 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 				}
 				break;
 			case 'c':
-#define Z_OPTARG(Spec, ArgValue, ZlibValue) \
-	if (strcmp(optarg, ArgValue) == 0) { \
-		(Spec)->sp_compresslvl = ZlibValue; \
-		message(VERBOSITY_1, "Using compression: %s", optarg); \
-	}
-				
-				Z_OPTARG(spec, "none", Z_NO_COMPRESSION);
-				Z_OPTARG(spec, "default", Z_DEFAULT_COMPRESSION);
-				Z_OPTARG(spec, "speed", Z_BEST_SPEED);
-				Z_OPTARG(spec, "size", Z_BEST_COMPRESSION);
-				
-#undef Z_OPTARG
+				spec->sp_lib = hostprog_lib_find_byname(optarg);
+				if (!spec->sp_lib)
+					error("could not find a compression library named %s", optarg);
 				break;
 			case 'D':
 				spec->sp_devtable = optarg;
@@ -962,6 +959,11 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 		usage(argv[0], stderr, spec);
 	spec->sp_rootdir = argv[optind + 0];
 	spec->sp_outfile = argv[optind + 1];
+	
+	if (!spec->sp_lib)
+		error("no compression library selected");
+	if (spec->sp_lib->hl_init(&spec->sp_lib_data, spec->sp_blksz) < 0)
+		error("failed to init %s", spec->sp_lib->hl_name);
 	
 	struct stat st;
 	if (stat(spec->sp_rootdir, &st) == 0) {
@@ -1020,7 +1022,8 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	 * a block is always smaller than the upper bound for an entire
 	 * block.
 	 */
-	spec->sp_compressionbufsz = compressBound(spec->sp_blksz);
+	spec->sp_compressionbufsz = spec->sp_lib->hl_upperbound(
+		spec->sp_lib_data, spec->sp_blksz);
 	spec->sp_compressionbuf = malloc(spec->sp_compressionbufsz);
 	if (!spec->sp_compressionbuf)
 		error("failed to allocate the compression buffer");
@@ -1028,6 +1031,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	message(VERBOSITY_1, "Block size: %llu", spec->sp_blksz);
 	message(VERBOSITY_1, "Block shift: %llu", spec->sp_blkshift);
 	
+	message(VERBOSITY_0, "Compression library: %s", spec->sp_lib->hl_name);
 	message(VERBOSITY_0, "Upper bound image size: %llu bytes", spec->sp_upperbound);
 	message(VERBOSITY_0, "Number of files: %llu", spec->sp_files);
 	message(VERBOSITY_0, "Directories: %llu", spec->sp_dirnodes);

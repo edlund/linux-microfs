@@ -26,6 +26,12 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Erik Edlund <erik.edlund@32767.se>");
 MODULE_ALIAS_FS("microfs");
 
+#if !( \
+		defined(MICROFS_DECOMPRESSOR_ZLIB) \
+	)
+#error "pointless build, see README"
+#endif
+
 static const struct super_operations microfs_s_ops;
 
 enum {
@@ -48,7 +54,7 @@ struct microfs_mount_options {
 	int mo_debug_cksig;
 };
 
-static __u64 microfs_select_bufsz(const char* const name, int requested,
+static __u64 select_bufsz(const char* const name, int requested,
 	const __u64 minimum)
 {
 	if (requested <= minimum) {
@@ -85,7 +91,7 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 	case Opt_##Name: \
 		if (match_int(&args[0], &option)) \
 			return 0; \
-		mount_opts->mo_##Name = microfs_select_bufsz(#Name, \
+		mount_opts->mo_##Name = select_bufsz(#Name, \
 			option, mount_opts->mo_##Name); \
 		break
 			
@@ -303,10 +309,11 @@ sb_retry:
 			mount_opts.mo_metadata_dentrybufsz, "sbi->si_metadata_dentrybuf")) < 0)
 		goto err_metadata_dentrybuf;
 	
-	err = microfs_inflate_init(sbi);
+	
+	err = microfs_decompressor_init(sbi);
 	if (err < 0) {
-		pr_err("failed to init the zlib stream\n");
-		goto err_inflate_init;
+		pr_err("failed to init the decompressor\n");
+		goto err_decompressor_init;
 	}
 	
 	msb = NULL;
@@ -317,7 +324,7 @@ sb_retry:
 	
 	return 0;
 	
-err_inflate_init:
+err_decompressor_init:
 	/* Fall-through. */
 err_metadata_dentrybuf:
 	destroy_data_buffer(&sbi->si_metadata_dentrybuf);
@@ -352,11 +359,13 @@ static int microfs_remount_fs(struct super_block* sb, int* flags, char* data)
 
 static void microfs_put_super(struct super_block* sb)
 {
-	destroy_data_buffer(&MICROFS_SB(sb)->si_filedatabuf);
-	destroy_data_buffer(&MICROFS_SB(sb)->si_metadata_blkptrbuf);
-	destroy_data_buffer(&MICROFS_SB(sb)->si_metadata_dentrybuf);
+	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	
-	microfs_inflate_end(MICROFS_SB(sb));
+	destroy_data_buffer(&sbi->si_filedatabuf);
+	destroy_data_buffer(&sbi->si_metadata_blkptrbuf);
+	destroy_data_buffer(&sbi->si_metadata_dentrybuf);
+	
+	sbi->si_decompressor->dc_end(sbi);
 	
 	kfree(sb->s_fs_info);
 	sb->s_fs_info = NULL;

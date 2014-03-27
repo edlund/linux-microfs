@@ -126,10 +126,9 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 	
 	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	struct microfs_readpage_request* rdreq = data;
-	struct z_stream_s* zstrm = &sbi->si_rdzstream;
 	
 	int err = 0;
-	int zerr = 0;
+	int implerr = 0;
 	
 	if (bhs) {
 		mutex_lock(&sbi->si_rdmutex);
@@ -143,34 +142,19 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 		
 		int repeat = 0;
 		
-		zstrm->avail_in = 0;
-		zstrm->next_in = NULL;
-		zstrm->avail_out = 0;
-		zstrm->next_out = NULL;
-		
-		__microfs_inflate_reset(sbi);
-		
-		sbi->si_filedatabuf.d_offset = MICROFS_MAXIMGSIZE - 1;
-		sbi->si_filedatabuf.d_used = 0;
-		
-		zstrm->avail_out = sbi->si_filedatabuf.d_size;
-		zstrm->next_out = sbi->si_filedatabuf.d_data;
+		sbi->si_decompressor->dc_reset(sbi);
+		sbi->si_decompressor->dc_2step_prepare(sbi);
 		
 		do {
-			err = __microfs_inflate_bhs(sbi, bhs, nbhs, &length,
-				&bh, &rdreq->rr_bhoffset, &inflated, &zerr);
-			repeat = __microfs_inflate_more(err, zerr, zstrm,
-				length, 0);
+			err = sbi->si_decompressor->dc_decompress(sbi,
+				bhs, nbhs, &length, &bh, &rdreq->rr_bhoffset,
+				&inflated, &implerr);
+			repeat = sbi->si_decompressor->dc_continue(sbi,
+				err, implerr, length, 0);
 		} while (repeat);
 		
-		if (err) {
+		if (sbi->si_decompressor->dc_erroneous(sbi, &err, &implerr))
 			goto err_inflate;
-		} else if (!err && zerr != Z_STREAM_END) {
-			pr_err("__microfs_copy_filedata_2step: zlib not at streams end"
-				" but no error is reported by __microfs_inflate_bhs\n");
-			err = -EIO;
-			goto err_inflate;
-		}
 		
 		sbi->si_filedatabuf.d_offset = offset;
 		sbi->si_filedatabuf.d_used = inflated;
@@ -244,47 +228,41 @@ static int __microfs_copy_filedata_direct(struct super_block* sb,
 	
 	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	struct microfs_readpage_request* rdreq = data;
-	struct z_stream_s* zstrm = &sbi->si_rdzstream;
 	
 	int err = 0;
-	int zerr = Z_ERRNO;
 	int repeat = 0;
+	int implerr = 0;
 	
 	mutex_lock(&sbi->si_rdmutex);
 	
 	pr_spam("__microfs_copy_filedata_direct: offset=0x%x, length=%u\n",
 		offset, length);
 	
-	zstrm->avail_in = 0;
-	zstrm->next_in = NULL;
-	zstrm->avail_out = 0;
-	zstrm->next_out = NULL;
-	
-	__microfs_inflate_reset(sbi);
+	sbi->si_decompressor->dc_reset(sbi);
+	sbi->si_decompressor->dc_direct_prepare(sbi);
 	
 	bh = 0;
 	page = 0;
 	page_data = NULL;
 	
 	do {
-		if (zstrm->avail_out == 0) {
+		if (sbi->si_decompressor->dc_direct_nextpage(sbi)) {
 			if (page_data) {
 				page_data = NULL;
 				kunmap(rdreq->rr_pages[page++]);
 			}
 			if (page < rdreq->rr_npages) {
 				page_data = kmap(rdreq->rr_pages[page]);
-				zstrm->avail_out = PAGE_CACHE_SIZE;
-				zstrm->next_out = page_data;
+				sbi->si_decompressor->dc_direct_pagedata(sbi, page_data);
 			} else {
-				zstrm->next_out = NULL;
+				sbi->si_decompressor->dc_direct_pagedata(sbi, NULL);
 			}
 		}
 		
-		err = __microfs_inflate_bhs(sbi, bhs, nbhs, &length,
-			&bh, &rdreq->rr_bhoffset, &inflated, &zerr);
+		err = sbi->si_decompressor->dc_decompress(sbi, bhs, nbhs, &length,
+			&bh, &rdreq->rr_bhoffset, &inflated, &implerr);
 		
-		repeat = __microfs_inflate_more(err, zerr, zstrm,
+		repeat = sbi->si_decompressor->dc_continue(sbi, err, implerr,
 			length, page + 1 < rdreq->rr_npages);
 		
 	} while (repeat);
@@ -294,14 +272,8 @@ static int __microfs_copy_filedata_direct(struct super_block* sb,
 		kunmap(rdreq->rr_pages[page]);
 	}
 	
-	if (err) {
+	if (sbi->si_decompressor->dc_erroneous(sbi, &err, &implerr))
 		goto err_inflate;
-	} else if (!err && zerr != Z_STREAM_END) {
-		pr_err("__microfs_copy_filedata_direct: zlib not at streams end"
-			" but no error is reported by __microfs_inflate_bhs\n");
-		err = -EIO;
-		goto err_inflate;
-	}
 	
 	unused = (rdreq->rr_npages * PAGE_CACHE_SIZE) - inflated;
 	if (unused) {

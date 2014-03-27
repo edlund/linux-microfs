@@ -19,6 +19,7 @@
 // microfs check image
 
 #include "hostprogs.h"
+#include "hostprogs_lib.h"
 #include "microfs.h"
 
 #include <dirent.h>
@@ -58,9 +59,9 @@ struct imgdesc {
 	/* Image file descriptor. */
 	int de_fd;
 	/* Memory mapping of the entire image. */
-	unsigned char* de_image;
+	char* de_image;
 	/* Buffer used for decompressing blocks. */
-	unsigned char* de_decompressionbuf;
+	char* de_decompressionbuf;
 	/* Size of de_decompressionbuf. */
 	__u64 de_decompressionbufsz;
 	/* Outer size of the image. */
@@ -79,8 +80,6 @@ struct imgdesc {
 	__u64 de_inodes;
 	/* Quick access to the superblock. */
 	struct microfs_sb* de_sb;
-	/* zlib stream. */
-	z_stream de_zstream;
 	/* Do a quick check. */
 	int de_quickie;
 	/* Change mode to match the image when extracting. */
@@ -93,6 +92,10 @@ struct imgdesc {
 	int de_pedantic;
 	/* Stack of all regular files, used to find duplicates. */
 	struct hostprog_stack* de_datastack;
+	/* Compression library to use. */
+	const struct hostprog_lib* de_lib;
+	/* Private data for the compression library. */
+	void* de_lib_data;
 };
 
 static void usage(const char* const exe, FILE* const dest)
@@ -267,26 +270,29 @@ sb_retry:
 	if (invalid_blkshift)
 		error("invalid block shift: %llu", desc->de_blkshift);
 	
-	desc->de_decompressionbufsz = compressBound(desc->de_blksz);
-	desc->de_decompressionbuf = malloc(desc->de_decompressionbufsz);
-	if (!desc->de_decompressionbuf)
-		error("failed to allocate the decompression buffer");
-	
-	int zlib_err = inflateInit(&desc->de_zstream);
-	if (zlib_err != Z_OK)
-		error("failed to init the zlib stream: %s", zError(zlib_err));
+	if (!desc->de_quickie) {
+		int lib = __le32_to_cpu(desc->de_sb->s_flags) & MICROFS_FLAG_MASK_DECOMPRESSOR;
+		desc->de_lib = hostprog_lib_find_byid(lib);
+		if (!desc->de_lib)
+			error("could not find a compression library with id 0x%x", lib);
+		if (desc->de_lib->hl_init(&desc->de_lib_data, desc->de_blksz) < 0)
+			error("failed to init %s", desc->de_lib->hl_name);
+		
+		desc->de_decompressionbufsz = desc->de_lib->hl_upperbound(desc->de_lib_data, desc->de_blksz);
+		desc->de_decompressionbuf = malloc(desc->de_decompressionbufsz);
+		if (!desc->de_decompressionbuf)
+			error("failed to allocate the decompression buffer");
+	}
 }
 
 static void ck_crc(struct imgdesc* const desc)
 {
-	__u64 padding = (unsigned char*)desc->de_sb - desc->de_image;
-	
+	__u32 padding = (char*)desc->de_sb - desc->de_image;
 	__u32 sb_crc = __le32_to_cpu(desc->de_sb->s_crc);
-	__u32 host_crc = crc32(0L, Z_NULL, 0);
 	
 	desc->de_sb->s_crc = 0;
 	
-	host_crc = crc32(host_crc, (Bytef*)desc->de_image + padding,
+	__u32 host_crc = hostprog_lib_zlib_crc32(desc->de_image + padding,
 		desc->de_innersz - padding);
 	
 	if (sb_crc != host_crc) {
@@ -348,30 +354,26 @@ static void ck_compression(struct imgdesc* const desc,
 		} else if (blk_data_length == 0) {
 			error("zero block data length at 0x%x", (__u32)blk_data_offset);
 		} else {
-			desc->de_zstream.next_in = desc->de_image + blk_data_offset;
-			desc->de_zstream.avail_in = blk_data_length;
+			__u32 decompressionbufsz = desc->de_decompressionbufsz;
 			
-			desc->de_zstream.next_out = desc->de_decompressionbuf;
-			desc->de_zstream.avail_out = desc->de_decompressionbufsz;
-			
-			int zlib_err;
-			
-			zlib_err = inflateReset(&desc->de_zstream);
-			if (zlib_err != Z_OK)
-				error("failed to reset the zlib stream: %s", zError(zlib_err));
-			
-			zlib_err = inflate(&desc->de_zstream, Z_FINISH);
-			if (zlib_err != Z_STREAM_END)
-				error("decompression error: %s", zError(zlib_err));
+			int implerr = 0;
+			int err = desc->de_lib->hl_decompress(desc->de_lib_data,
+				desc->de_decompressionbuf, &decompressionbufsz,
+				desc->de_image + blk_data_offset, blk_data_length,
+				&implerr);
+			if (err < 0) {
+				error("decompression failed: %s",
+					desc->de_lib->hl_strerror(desc->de_lib_data, implerr));
+			}
 			
 			if (inode_data) {
 				memcpy(inode_data + inode_data_offset,
-					desc->de_decompressionbuf, desc->de_zstream.total_out);
+					desc->de_decompressionbuf, decompressionbufsz);
 			}
 			
-			checked = desc->de_zstream.total_out;
+			checked = decompressionbufsz;
 			blk_data_offset += blk_data_length;
-			inode_data_offset += desc->de_zstream.total_out;
+			inode_data_offset += decompressionbufsz;
 			
 			desc->de_datasz += blk_data_length;
 			imgd->d_rawsz += blk_data_length;

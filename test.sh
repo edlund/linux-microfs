@@ -238,14 +238,11 @@ else
 	conf_stresstest="-S"
 fi
 
-# Try every compression option with different block sizes and
+# Try every compression lib with different block sizes and
 # try that with and without padding.
-compression_options=(
-	"-c none"
-	"-c default"
-	"-c size"
-	"-c speed"
-)
+"${script_dir}/microfslib" > "${temp_dir}/libs.txt"
+readarray -t compression_options < "${temp_dir}/libs.txt"
+
 if [[ "${conf_quicktest}" == "no" ]] ; then
 	blocksz_options=(
 		"-b 512"

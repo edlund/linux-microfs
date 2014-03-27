@@ -34,15 +34,15 @@ HOST_EXTRACFLAGS += \
 	-D_GNU_SOURCE \
 	-D_FILE_OFFSET_BITS=64
 
-ifdef DEBUG
-ccflags-y := -DDEBUG
+ifeq ($(DEBUG),1)
+ccflags-y += -DDEBUG
 HOST_EXTRACFLAGS += -ggdb
 $(info DEBUG build)
-ifdef DEBUG_SPAM
+ifeq ($(DEBUG_SPAM),1)
 ccflags-y += -DDEBUG_SPAM
 $(info DEBUG_SPAM build)
 endif
-ifdef DEBUG_INODES
+ifeq ($(DEBUG_INODES),1)
 ccflags-y += -DDEBUG_INODES
 $(info DEBUG_INODES build)
 endif
@@ -54,20 +54,35 @@ obj-m := microfs.o
 microfs-y := \
 	microfs_super.o \
 	microfs_read.o \
-	microfs_inflate.o \
+	microfs_decompressor.o \
+	microfs_decompressor_zlib.o \
 	microfs_inode.o \
 	microfs_compat.o
 
 hostprogs-y := \
 	microfscki \
 	microfsmki \
+	microfslib \
 	test
 
-microfscki-objs := hostprog_microfscki.o hostprogs.o
-HOSTLOADLIBES_microfscki := -lrt -lz
+microfscki-objs := \
+	hostprog_microfscki.o \
+	hostprogs.o \
+	hostprogs_lib.o \
+	hostprogs_lib_zlib.o
+HOSTLOADLIBES_microfscki := -lrt
 
-microfsmki-objs := hostprog_microfsmki.o hostprogs.o
-HOSTLOADLIBES_microfsmki := -lrt -lz
+microfsmki-objs := \
+	hostprog_microfsmki.o \
+	hostprogs.o \
+	hostprogs_lib.o \
+	hostprogs_lib_zlib.o
+HOSTLOADLIBES_microfsmki := -lrt
+
+microfslib-objs := \
+	hostprog_microfslib.o \
+	hostprogs_lib.o \
+	hostprogs_lib_zlib.o
 
 test-objs := \
 	test.o \
@@ -75,6 +90,12 @@ test-objs := \
 	test_hostprogs.o \
 	hostprogs.o
 HOSTLOADLIBES_test := -lcheck -lm -lrt -lpthread
+
+HOSTLOADLIBES_microfscki += -lz
+HOSTLOADLIBES_microfsmki += -lz
+HOSTLOADLIBES_microfslib += -lz
+ccflags-y += -DMICROFS_DECOMPRESSOR_ZLIB
+HOST_EXTRACFLAGS += -DHOSTPROGS_LIB_ZLIB
 
 always := $(hostprogs-y)
 
