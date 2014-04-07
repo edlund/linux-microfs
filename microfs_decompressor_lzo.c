@@ -18,41 +18,41 @@
 
 #include "microfs.h"
 
-#include "libinfo_lz4.h"
+#include "libinfo_lzo.h"
 
-#ifdef MICROFS_DECOMPRESSOR_LZ4
+#ifdef MICROFS_DECOMPRESSOR_LZO
 
-#include <linux/lz4.h>
+#include <linux/lzo.h>
 
-int decompressor_lz4_create(struct microfs_sb_info* sbi)
+int decompressor_lzo_create(struct microfs_sb_info* sbi)
 {
-	return decompressor_lzx_create(sbi, lz4_compressbound(sbi->si_blksz));
+	return decompressor_lzx_create(sbi, lzo1x_worst_compress(sbi->si_blksz));
 }
 
 static int decompressor_lzo_end_consumer(struct microfs_sb_info* sbi,
 	int* implerr, char* input, __u32 inputsz, char* output, __u32* outputsz)
 {
-	size_t lz4_outputsz = *outputsz;
+	size_t lzo_outputsz = *outputsz;
 	
 	(void)sbi;
 	
-	*implerr = lz4_decompress_unknownoutputsize(input, inputsz, output, &lz4_outputsz);
-	*outputsz = lz4_outputsz;
+	*implerr = lzo1x_decompress_safe(input, inputsz, output, &lzo_outputsz);
+	*outputsz = lzo_outputsz;
 	
-	return *implerr < 0? -EIO: 0;
+	return *implerr != LZO_E_OK? -EIO: 0;
 }
 
-static int decompressor_lz4_end(struct microfs_sb_info* sbi,
+static int decompressor_lzo_end(struct microfs_sb_info* sbi,
 	int* err, int* implerr, __u32* decompressed)
 {
 	return decompressor_lzx_end(sbi, err, implerr, decompressed,
 		decompressor_lzo_end_consumer);
 }
 
-const struct microfs_decompressor decompressor_lz4 = {
-	.dc_info = &libinfo_lz4,
+const struct microfs_decompressor decompressor_lzo = {
+	.dc_info = &libinfo_lzo,
 	.dc_compiled = 1,
-	.dc_create = decompressor_lz4_create,
+	.dc_create = decompressor_lzo_create,
 	.dc_destroy = decompressor_lzx_destroy,
 	.dc_reset = decompressor_lzx_reset,
 	.dc_exceptionally_begin = decompressor_lzx_exceptionally_begin,
@@ -62,15 +62,14 @@ const struct microfs_decompressor decompressor_lz4 = {
 	.dc_nominally_strm_releasepage = decompressor_lzx_nominally_strm_releasepage,
 	.dc_consumebhs = decompressor_lzx_consumebhs,
 	.dc_continue = decompressor_lzx_continue,
-	.dc_end = decompressor_lz4_end
+	.dc_end = decompressor_lzo_end
 };
 
 #else
 
-const struct microfs_decompressor decompressor_lz4 = {
-	.dc_info = &libinfo_lz4,
+const struct microfs_decompressor decompressor_lzo = {
+	.dc_info = &libinfo_lzo,
 	.dc_compiled = 0
 };
 
 #endif
-

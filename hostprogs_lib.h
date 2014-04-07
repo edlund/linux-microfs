@@ -44,6 +44,7 @@ struct hostprog_lib {
 
 extern const struct hostprog_lib hostprog_lib_zlib;
 extern const struct hostprog_lib hostprog_lib_lz4;
+extern const struct hostprog_lib hostprog_lib_lzo;
 
 const struct hostprog_lib* hostprog_lib_find_byid(const int id);
 const struct hostprog_lib* hostprog_lib_find_byname(const char* name);

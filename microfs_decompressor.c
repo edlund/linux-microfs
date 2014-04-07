@@ -25,6 +25,7 @@ static const struct microfs_decompressor decompressor_null = {
 static const struct microfs_decompressor* decompressors[] = {
 	&decompressor_zlib,
 	&decompressor_lz4,
+	&decompressor_lzo,
 	&decompressor_null
 };
 
@@ -66,4 +67,6 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi)
 err:
 	return err;
 }
+
+
 

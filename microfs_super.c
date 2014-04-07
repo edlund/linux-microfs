@@ -29,7 +29,8 @@ MODULE_ALIAS_FS("microfs");
 
 #if !( \
 		defined(MICROFS_DECOMPRESSOR_ZLIB) || \
-		defined(MICROFS_DECOMPRESSOR_LZ4) \
+		defined(MICROFS_DECOMPRESSOR_LZ4)  || \
+		defined(MICROFS_DECOMPRESSOR_LZO)     \
 	)
 #error "pointless build, see README"
 #endif
