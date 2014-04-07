@@ -232,7 +232,7 @@ static void usage(const char* const exe, FILE* const dest)
 int main(int argc, char* argv[])
 {
 	if (argc < 2)
-		usage(argc > 0? argv[0]: "", stderr);
+		usage(argc > 0? argv[0]: "frd", stderr);
 	
 	struct readoptions rdopts;
 	memset(&rdopts, 0, sizeof(rdopts));

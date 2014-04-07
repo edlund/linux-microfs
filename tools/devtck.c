@@ -65,7 +65,7 @@ static void usage(const char* const exe)
 int main(int argc, char* argv[])
 {
 	if (argc != 4)
-		usage(argc > 0? argv[0]: "");
+		usage(argc > 0? argv[0]: "devtck");
 	
 	int devbits = 0;
 	opt_strtolx(l, '1', argv[1], devbits);

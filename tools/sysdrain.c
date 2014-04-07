@@ -269,6 +269,9 @@ static void usage(const char* const exe, FILE* const dest)
 
 int main(int argc, char* argv[])
 {
+	if (argc == 0)
+		usage("sysdrain", stderr);
+	
 	struct sysdrainoptions sdopts;
 	memset(&sdopts, 0, sizeof(sdopts));
 	
