@@ -39,6 +39,7 @@ The difference between `cramfs` and `microfs` lies in that `microfs`
  * Split the image into four main parts; 1) superblock, 2) inodes
    and dentries, 3) block pointers and 4) the compressed blocks.
    See the section "image format" for more information.
+ * Support LZ4 as an alternative to zlib.
 
 ## Licensing
 
@@ -95,6 +96,7 @@ also need the following things in order to compile successfully:
  * GNU bash (>=4.2), http://www.gnu.org/software/bash/
  * check unit test framework (>=0.9.8), http://check.sourceforge.net/
  * zlib (>=1.2.7), http://www.zlib.net/
+ * liblz4 (>=r94), http://code.google.com/p/lz4/ (opt)
  * python (>=2.7), http://www.python.org/
  * perl (>=5.14), http://www.perl.org/
  * cramfs-tools (>=1.1), http://sourceforge.net/projects/cramfs/ (opt)
@@ -102,9 +104,20 @@ also need the following things in order to compile successfully:
  * inotify-tools (>=3.14), https://github.com/rvoicilas/inotify-tools (opt)
  * tmpfs (>=3.11.0), https://www.kernel.org/ (opt)
 
-Once the build environment is set up it is sufficient to run `make`
-from the root source directory to build the lkm and the hostprogs
-with zlib support.
+Once the build environment is set up it is sufficient to run
+`make` from the root source directory to build the lkm and the
+hostprogs with zlib support.
+
+It is possible to control which compression libraries are supported
+by specifying `LIB_*`-params for make. Available options are:
+
+ * `LIB_ZLIB`
+ * `LIB_LZ4`
+
+To add support for LZ4, simply use `make LIB_LZ4=1`. Please
+note that zlib support must always be compiled for the hostprogs,
+so specifying `LIB_ZLIB=0` will only mean that the lkm is
+compiled without zlib support.
 
 Use the make command line argument `DEBUG=1` or the combination
 `DEBUG=1 DEBUG_SPAM=1` to do a debug build. Please note that a
@@ -204,7 +217,7 @@ One should probably avoid stress testing.
 This section will be updated once support for different
 compression algorithms is implemented.
 
-## A small list of mixed TODOs, FIXMEs, WTFs and the sort.
+## A small list of mixed TODOs, FIXMEs, WTFs and the sort
 
  * Implement support for different compression algorithms.
  * Is the pseudorandomness reproducible enough?

@@ -18,11 +18,13 @@
 
 #include "microfs.h"
 
+#include "libinfo_zlib.h"
+
 #ifdef MICROFS_DECOMPRESSOR_ZLIB
 
 #include <linux/zlib.h>
 
-static int decompressor_zlib_init(struct microfs_sb_info* sbi)
+static int decompressor_zlib_create(struct microfs_sb_info* sbi)
 {
 	struct z_stream_s* zstrm = kmalloc(sizeof(*zstrm), GFP_KERNEL);
 	if (!zstrm)
@@ -48,7 +50,7 @@ err_mem_zstrm:
 	return -ENOMEM;
 }
 
-static int decompressor_zlib_end(struct microfs_sb_info* sbi)
+static int decompressor_zlib_destroy(struct microfs_sb_info* sbi)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
 	sbi->si_decompressor_data = NULL;
@@ -73,7 +75,7 @@ static int decompressor_zlib_reset(struct microfs_sb_info* sbi)
 	return 0;
 }
 
-static int decompressor_zlib_2step_prepare(struct microfs_sb_info* sbi)
+static int decompressor_zlib_exceptionally_begin(struct microfs_sb_info* sbi)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
 	
@@ -87,9 +89,13 @@ static int decompressor_zlib_2step_prepare(struct microfs_sb_info* sbi)
 	return 0;
 }
 
-static int decompressor_zlib_direct_prepare(struct microfs_sb_info* sbi)
+static int decompressor_zlib_nominally_begin(struct microfs_sb_info* sbi,
+	struct page** pages, __u32 npages)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	
+	(void)pages;
+	(void)npages;
 	
 	zstrm->avail_in = 0;
 	zstrm->next_in = NULL;
@@ -99,39 +105,34 @@ static int decompressor_zlib_direct_prepare(struct microfs_sb_info* sbi)
 	return 0;
 }
 
-static int decompressor_zlib_direct_nextpage(struct microfs_sb_info* sbi)
+static int decompressor_zlib_nominally_strm_needpage(struct microfs_sb_info* sbi)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
 	return zstrm->avail_out == 0;
 }
 
-static int decompressor_zlib_direct_pagedata(struct microfs_sb_info* sbi, void* page_data)
+static int decompressor_zlib_nominally_strm_utilizepage(struct microfs_sb_info* sbi,
+	struct page* page)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
-	if (page_data) {
+	if (page) {
 		zstrm->avail_out = PAGE_CACHE_SIZE;
-		zstrm->next_out = page_data;
+		zstrm->next_out = kmap(page);
 	} else {
 		zstrm->next_out = NULL;
-	}
-	return 0;
-}
-
-static int decompressor_zlib_erroneous(struct microfs_sb_info* sbi,
-	int* err, int* implerr)
-{
-	if (*err) {
-		return 0;
-	} else if (!*err && *implerr != Z_STREAM_END) {
-		pr_err("decompressor_zlib_erroneous: zlib not at streams end"
-			" but no error is reported by decompressor_zlib_decompress\n");
-		*err = -EIO;
-		return 0;
 	}
 	return 1;
 }
 
-static int decompressor_zlib_decompress(struct microfs_sb_info* sbi,
+static int decompressor_zlib_nominally_strm_releasepage(struct microfs_sb_info* sbi,
+	struct page* page)
+{
+	(void)sbi;
+	kunmap(page);
+	return 0;
+}
+
+static int decompressor_zlib_consumebhs(struct microfs_sb_info* sbi,
 	struct buffer_head** bhs, __u32 nbhs, __u32* length,
 	__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr)
 {
@@ -139,14 +140,14 @@ static int decompressor_zlib_decompress(struct microfs_sb_info* sbi,
 	
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
 	
-	pr_spam("__microfs_inflate_bhs: sbi=0x%p, bhs=0x%p, nbhs=%u\n", sbi, bhs, nbhs);
-	pr_spam("__microfs_inflate_bhs: ztream=0x%p\n", zstrm);
-	pr_spam("__microfs_inflate_bhs: *length=%u, *bh=%u, *bh_offset=%u, *inflated=%u\n",
+	pr_spam("decompressor_zlib_consumebhs: sbi=0x%p, bhs=0x%p, nbhs=%u\n", sbi, bhs, nbhs);
+	pr_spam("decompressor_zlib_consumebhs: ztream=0x%p\n", zstrm);
+	pr_spam("decompressor_zlib_consumebhs: *length=%u, *bh=%u, *bh_offset=%u, *inflated=%u\n",
 		*length, *bh, *bh_offset, *inflated);
 	
 	do {
 		if (zstrm->avail_in == 0) {
-			pr_spam("__microfs_inflate_bhs: *bh=%u, bhs[*bh]=0x%p\n", *bh, bhs[*bh]);
+			pr_spam("decompressor_zlib_consumebhs: *bh=%u, bhs[*bh]=0x%p\n", *bh, bhs[*bh]);
 			zstrm->avail_in = min_t(__u32, *length, PAGE_CACHE_SIZE - *bh_offset);
 			zstrm->next_in = bhs[*bh]->b_data + *bh_offset;
 			*bh += 1;
@@ -154,21 +155,21 @@ static int decompressor_zlib_decompress(struct microfs_sb_info* sbi,
 			*bh_offset = 0;
 		}
 		
-		pr_spam("__microfs_inflate_bhs: *length=%u\n", *length);
+		pr_spam("decompressor_zlib_consumebhs: *length=%u\n", *length);
 		
-		pr_spam("__microfs_inflate_bhs: pre; zstrm->avail_out=%u, zstrm->next_out=0x%p\n",
+		pr_spam("decompressor_zlib_consumebhs: pre; zstrm->avail_out=%u, zstrm->next_out=0x%p\n",
 			zstrm->avail_out, zstrm->next_out);
-		pr_spam("__microfs_inflate_bhs: pre; zstrm->avail_in=%u, zstrm->next_in=0x%p\n",
+		pr_spam("decompressor_zlib_consumebhs: pre; zstrm->avail_in=%u, zstrm->next_in=0x%p\n",
 			zstrm->avail_in, zstrm->next_in);
 		
 		*implerr = zlib_inflate(zstrm, Z_SYNC_FLUSH);
 		
-		pr_spam("__microfs_inflate_bhs: post; zstrm->avail_out=%u, zstrm->next_out=0x%p\n",
+		pr_spam("decompressor_zlib_consumebhs: post; zstrm->avail_out=%u, zstrm->next_out=0x%p\n",
 			zstrm->avail_out, zstrm->next_out);
-		pr_spam("__microfs_inflate_bhs: post; zstrm->avail_in=%u, zstrm->next_in=0x%p\n",
+		pr_spam("decompressor_zlib_consumebhs: post; zstrm->avail_in=%u, zstrm->next_in=0x%p\n",
 			zstrm->avail_in, zstrm->next_in);
 		
-		pr_spam("__microfs_inflate_bhs: *zerr=%d\n", *implerr);
+		pr_spam("decompressor_zlib_consumebhs: *zerr=%d\n", *implerr);
 		
 		if (zstrm->avail_out == 0 && zstrm->next_out != NULL) {
 			/* zstrm->avail_out can be zero when zstrm->next_out is NULL.
@@ -183,11 +184,11 @@ static int decompressor_zlib_decompress(struct microfs_sb_info* sbi,
 	
 	if (*implerr == Z_STREAM_END) {
 		*inflated += zstrm->total_out;
-		pr_spam("__microfs_inflate_bhs: at streams end, %u bytes inflated, %u bytes total",
+		pr_spam("decompressor_zlib_consumebhs: at streams end, %u bytes inflated, %u bytes total",
 			(__u32)zstrm->total_out, *inflated);
 		sbi->si_decompressor->dc_reset(sbi);
 	} else if (*implerr != Z_OK) {
-		pr_err("__microfs_inflate_bhs: failed to inflate data: %s\n", zstrm->msg);
+		pr_err("decompressor_zlib_consumebhs: failed to inflate data: %s\n", zstrm->msg);
 		err = -EIO;
 	}
 	
@@ -209,28 +210,44 @@ static int decompressor_zlib_continue(struct microfs_sb_info* sbi,
 	);
 }
 
+static int decompressor_zlib_end(struct microfs_sb_info* sbi,
+	int* err, int* implerr, __u32* decompressed)
+{
+	(void)sbi;
+	(void)decompressed;
+	
+	if (*err) {
+		return -1;
+	} else if (!*err && *implerr != Z_STREAM_END) {
+		pr_err("decompressor_zlib_end: zlib not at streams end"
+			" but no error is reported by decompressor_zlib_consumebhs\n");
+		*err = -EIO;
+		return -1;
+	}
+	return 0;
+}
+
 const struct microfs_decompressor decompressor_zlib = {
-	.dc_id = MICROFS_FLAG_DECOMPRESSOR_ZLIB,
+	.dc_info = &libinfo_zlib,
 	.dc_compiled = 1,
-	.dc_name = "zlib",
-	.dc_init = decompressor_zlib_init,
-	.dc_end = decompressor_zlib_end,
+	.dc_create = decompressor_zlib_create,
+	.dc_destroy = decompressor_zlib_destroy,
 	.dc_reset = decompressor_zlib_reset,
-	.dc_2step_prepare = decompressor_zlib_2step_prepare,
-	.dc_direct_prepare = decompressor_zlib_direct_prepare,
-	.dc_direct_nextpage = decompressor_zlib_direct_nextpage,
-	.dc_direct_pagedata = decompressor_zlib_direct_pagedata,
-	.dc_erroneous = decompressor_zlib_erroneous,
-	.dc_decompress = decompressor_zlib_decompress,
-	.dc_continue = decompressor_zlib_continue
+	.dc_exceptionally_begin = decompressor_zlib_exceptionally_begin,
+	.dc_nominally_begin = decompressor_zlib_nominally_begin,
+	.dc_nominally_strm_needpage = decompressor_zlib_nominally_strm_needpage,
+	.dc_nominally_strm_utilizepage = decompressor_zlib_nominally_strm_utilizepage,
+	.dc_nominally_strm_releasepage = decompressor_zlib_nominally_strm_releasepage,
+	.dc_consumebhs = decompressor_zlib_consumebhs,
+	.dc_continue = decompressor_zlib_continue,
+	.dc_end = decompressor_zlib_end
 };
 
 #else
 
 const struct microfs_decompressor decompressor_zlib = {
-	.dc_id = MICROFS_FLAG_DECOMPRESSOR_ZLIB,
-	.dc_compiled = 0,
-	.dc_name = "zlib"
+	.dc_info = &libinfo_zlib,
+	.dc_compiled = 0
 };
 
 #endif

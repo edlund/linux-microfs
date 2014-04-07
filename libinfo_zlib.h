@@ -16,30 +16,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __MICROFS_FLAGS_H__
-#define __MICROFS_FLAGS_H__
-
-/* Feature flag ranges:
- * 
- * 0x00000000 - 0x000000ff: Features which will work with
- *                          all past kernels.
- * 0x00000100 - 0xffffffff: Features which will NOT work
- *                          with all past kernels.
- * 
- * 0x00000100 - 0x0000ff00: Decompressor types.
- */
-
-#define MICROFS_FLAG_DECOMPRESSOR_NULL 0x00000000
-#define MICROFS_FLAG_DECOMPRESSOR_ZLIB 0x00000100
-#define MICROFS_FLAG_DECOMPRESSOR_LZ4  0x00000200
-
-#define MICROFS_FLAG_MASK_OLDKERNELS   0x000000ff
-#define MICROFS_FLAG_MASK_DECOMPRESSOR 0x0000ff00
-
-#define MICROFS_SUPPORTED_FLAGS (MICROFS_FLAG_MASK_OLDKERNELS \
-		| MICROFS_FLAG_DECOMPRESSOR_ZLIB \
-		| MICROFS_FLAG_DECOMPRESSOR_LZ4  \
-	)
-
+#ifdef __LIBINFO_ZLIB_H__
+#error "multiple includes"
 #endif
+#define __LIBINFO_ZLIB_H__
+
+static const struct libinfo libinfo_zlib = {
+	.li_id = MICROFS_FLAG_DECOMPRESSOR_ZLIB,
+	.li_streaming = 1,
+	.li_min_blksz = MICROFS_MINBLKSZ,
+	.li_max_blksz = MICROFS_MAXBLKSZ,
+	.li_name = "zlib"
+};
 

@@ -17,7 +17,10 @@
  */
 
 #include "hostprogs_lib.h"
+#include "microfs_constants.h"
 #include "microfs_flags.h"
+
+#include "libinfo_zlib.h"
 
 #include <zlib.h>
 
@@ -70,12 +73,12 @@ static const char* hostprog_lib_zlib_strerror(void* data, int implerr)
 }
 
 const struct hostprog_lib hostprog_lib_zlib = {
-	.hl_id = MICROFS_FLAG_DECOMPRESSOR_ZLIB,
+	.hl_info = &libinfo_zlib,
 	.hl_compiled = 1,
-	.hl_name = "zlib",
 	.hl_init = hostprog_lib_zlib_init,
 	.hl_compress = hostprog_lib_zlib_compress,
 	.hl_decompress = hostprog_lib_zlib_decompress,
 	.hl_upperbound = hostprog_lib_zlib_upperbound,
 	.hl_strerror = hostprog_lib_zlib_strerror
 };
+

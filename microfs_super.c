@@ -18,6 +18,7 @@
 
 #include "microfs.h"
 
+#include <linux/init.h>
 #include <linux/module.h>
 #include <linux/parser.h>
 
@@ -27,7 +28,8 @@ MODULE_AUTHOR("Erik Edlund <erik.edlund@32767.se>");
 MODULE_ALIAS_FS("microfs");
 
 #if !( \
-		defined(MICROFS_DECOMPRESSOR_ZLIB) \
+		defined(MICROFS_DECOMPRESSOR_ZLIB) || \
+		defined(MICROFS_DECOMPRESSOR_LZ4) \
 	)
 #error "pointless build, see README"
 #endif
@@ -365,7 +367,10 @@ static void microfs_put_super(struct super_block* sb)
 	destroy_data_buffer(&sbi->si_metadata_blkptrbuf);
 	destroy_data_buffer(&sbi->si_metadata_dentrybuf);
 	
-	sbi->si_decompressor->dc_end(sbi);
+	if (sbi->si_decompressor) {
+		sbi->si_decompressor->dc_destroy(sbi);
+		sbi->si_decompressor = NULL;
+	}
 	
 	kfree(sb->s_fs_info);
 	sb->s_fs_info = NULL;

@@ -113,11 +113,11 @@ static int __microfs_recycle_metadata(struct super_block* sb,
 	return -EIO;
 }
 
-static int __microfs_copy_filedata_2step(struct super_block* sb,
+static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 	void* data, struct buffer_head** bhs, __u32 nbhs,
 	__u32 offset, __u32 length)
 {
-	__u32 inflated = 0;
+	__u32 decompressed = 0;
 	__u32 remaining;
 	__u32 available;
 	__u32 unused;
@@ -134,7 +134,7 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 		mutex_lock(&sbi->si_rdmutex);
 	}
 	
-	pr_spam("__microfs_copy_filedata_2step: offset=0x%x, length=%u\n",
+	pr_spam("__microfs_copy_filedata_exceptionally: offset=0x%x, length=%u\n",
 		offset, length);
 	
 	if (bhs) {
@@ -143,29 +143,29 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 		int repeat = 0;
 		
 		sbi->si_decompressor->dc_reset(sbi);
-		sbi->si_decompressor->dc_2step_prepare(sbi);
+		sbi->si_decompressor->dc_exceptionally_begin(sbi);
 		
 		do {
-			err = sbi->si_decompressor->dc_decompress(sbi,
+			err = sbi->si_decompressor->dc_consumebhs(sbi,
 				bhs, nbhs, &length, &bh, &rdreq->rr_bhoffset,
-				&inflated, &implerr);
+				&decompressed, &implerr);
 			repeat = sbi->si_decompressor->dc_continue(sbi,
 				err, implerr, length, 0);
 		} while (repeat);
 		
-		if (sbi->si_decompressor->dc_erroneous(sbi, &err, &implerr))
+		if (sbi->si_decompressor->dc_end(sbi, &err, &implerr, &decompressed) < 0)
 			goto err_inflate;
 		
 		sbi->si_filedatabuf.d_offset = offset;
-		sbi->si_filedatabuf.d_used = inflated;
+		sbi->si_filedatabuf.d_used = decompressed;
 	} else {
-		inflated = sbi->si_filedatabuf.d_used;
-		pr_spam("__microfs_copy_filedata_2step: cache hit for offset 0x%x"
-			" - %u bytes already inflated in sbi->si_filedatabuf\n",
-				offset, inflated);
+		decompressed = sbi->si_filedatabuf.d_used;
+		pr_spam("__microfs_copy_filedata_exceptionally: cache hit for offset 0x%x"
+			" - %u bytes already decompressed in sbi->si_filedatabuf\n",
+				offset, decompressed);
 	}
 	
-	for (page = 0, buf_offset = 0, remaining = inflated; page < rdreq->rr_npages;
+	for (page = 0, buf_offset = 0, remaining = decompressed; page < rdreq->rr_npages;
 			page += 1, buf_offset += PAGE_CACHE_SIZE) {
 		available = min_t(__u32, remaining, PAGE_CACHE_SIZE);
 		unused = PAGE_CACHE_SIZE - available;
@@ -173,11 +173,11 @@ static int __microfs_copy_filedata_2step(struct super_block* sb,
 		
 		if (rdreq->rr_pages[page]) {
 			void* page_data = kmap(rdreq->rr_pages[page]);
-			pr_spam("__microfs_copy_filedata_2step: buf_offset=%u, remaining=%u\n",
+			pr_spam("__microfs_copy_filedata_exceptionally: buf_offset=%u, remaining=%u\n",
 				buf_offset, remaining);
-			pr_spam("__microfs_copy_filedata_2step: copying %u bytes to page %u\n",
+			pr_spam("__microfs_copy_filedata_exceptionally: copying %u bytes to page %u\n",
 				available, page);
-			pr_spam("__microfs_copy_filedata_2step: zeroing %u bytes for page %u\n",
+			pr_spam("__microfs_copy_filedata_exceptionally: zeroing %u bytes for page %u\n",
 				unused, page);
 			memcpy(page_data, sbi->si_filedatabuf.d_data + buf_offset, available);
 			memset(page_data + available, 0, unused);
@@ -192,7 +192,7 @@ err_inflate:
 	return err;
 }
 
-static int __microfs_recycle_filedata_2step(struct super_block* sb,
+static int __microfs_recycle_filedata_exceptionally(struct super_block* sb,
 	void* data, __u32 offset, __u32 length,
 	microfs_read_blks_consumer consumer)
 {
@@ -207,7 +207,7 @@ static int __microfs_recycle_filedata_2step(struct super_block* sb,
 			cached = 1;
 			err = consumer(sb, data, NULL, 0, offset, length);
 		} else {
-			pr_spam("__microfs_recycle_filedata_2step:"
+			pr_spam("__microfs_recycle_filedata_exceptionally:"
 				" near cache miss at offset 0x%x (hit stolen)\n", offset);
 		}
 		mutex_unlock(&sbi->si_rdmutex);
@@ -215,16 +215,14 @@ static int __microfs_recycle_filedata_2step(struct super_block* sb,
 	return !err && cached? 0: -EIO;
 }
 
-static int __microfs_copy_filedata_direct(struct super_block* sb,
+static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	void* data, struct buffer_head** bhs, __u32 nbhs,
 	__u32 offset, __u32 length)
 {
 	__u32 bh;
 	__u32 page;
 	__u32 unused;
-	__u32 inflated = 0;
-	
-	void* page_data;
+	__u32 decompressed = 0;
 	
 	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	struct microfs_readpage_request* rdreq = data;
@@ -233,55 +231,58 @@ static int __microfs_copy_filedata_direct(struct super_block* sb,
 	int repeat = 0;
 	int implerr = 0;
 	
+	int strm_release = 0;
+	
 	mutex_lock(&sbi->si_rdmutex);
 	
-	pr_spam("__microfs_copy_filedata_direct: offset=0x%x, length=%u\n",
+	pr_spam("__microfs_copy_filedata_nominally: offset=0x%x, length=%u\n",
 		offset, length);
 	
 	sbi->si_decompressor->dc_reset(sbi);
-	sbi->si_decompressor->dc_direct_prepare(sbi);
+	sbi->si_decompressor->dc_nominally_begin(sbi,
+		rdreq->rr_pages, rdreq->rr_npages);
 	
 	bh = 0;
 	page = 0;
-	page_data = NULL;
 	
 	do {
-		if (sbi->si_decompressor->dc_direct_nextpage(sbi)) {
-			if (page_data) {
-				page_data = NULL;
-				kunmap(rdreq->rr_pages[page++]);
+		if (sbi->si_decompressor->dc_nominally_strm_needpage(sbi)) {
+			if (strm_release) {
+				strm_release = sbi->si_decompressor->dc_nominally_strm_releasepage(
+					sbi, rdreq->rr_pages[page++]);
 			}
 			if (page < rdreq->rr_npages) {
-				page_data = kmap(rdreq->rr_pages[page]);
-				sbi->si_decompressor->dc_direct_pagedata(sbi, page_data);
+				strm_release = sbi->si_decompressor->dc_nominally_strm_utilizepage(
+					sbi, rdreq->rr_pages[page]);
 			} else {
-				sbi->si_decompressor->dc_direct_pagedata(sbi, NULL);
+				strm_release = sbi->si_decompressor->dc_nominally_strm_utilizepage(
+					sbi, NULL);
 			}
 		}
 		
-		err = sbi->si_decompressor->dc_decompress(sbi, bhs, nbhs, &length,
-			&bh, &rdreq->rr_bhoffset, &inflated, &implerr);
+		err = sbi->si_decompressor->dc_consumebhs(sbi, bhs, nbhs, &length,
+			&bh, &rdreq->rr_bhoffset, &decompressed, &implerr);
 		
 		repeat = sbi->si_decompressor->dc_continue(sbi, err, implerr,
 			length, page + 1 < rdreq->rr_npages);
 		
 	} while (repeat);
 	
-	if (page_data) {
-		page_data = NULL;
-		kunmap(rdreq->rr_pages[page]);
+	if (strm_release) {
+		sbi->si_decompressor->dc_nominally_strm_releasepage(sbi,
+			rdreq->rr_pages[page]);
 	}
 	
-	if (sbi->si_decompressor->dc_erroneous(sbi, &err, &implerr))
+	if (sbi->si_decompressor->dc_end(sbi, &err, &implerr, &decompressed) < 0)
 		goto err_inflate;
 	
-	unused = (rdreq->rr_npages * PAGE_CACHE_SIZE) - inflated;
+	unused = (rdreq->rr_npages * PAGE_CACHE_SIZE) - decompressed;
 	if (unused) {
 		page = rdreq->rr_npages - 1;
 		do {
 			void* page_data = kmap(rdreq->rr_pages[page]);
 			__u32 page_avail = min_t(__u32, unused, PAGE_CACHE_SIZE);
-			pr_spam("__microfs_copy_filedata_direct: zeroing %u bytes for page %u\n",
+			pr_spam("__microfs_copy_filedata_nominally: zeroing %u bytes for page %u\n",
 				page_avail, page);
 			memset(page_data + (PAGE_CACHE_SIZE - page_avail), 0, page_avail);
 			kunmap(rdreq->rr_pages[page]);
@@ -295,7 +296,7 @@ err_inflate:
 	return err;
 }
 
-static int __microfs_recycle_filedata_direct(struct super_block* sb,
+static int __microfs_recycle_filedata_nominally(struct super_block* sb,
 	void* data, __u32 offset, __u32 length,
 	microfs_read_blks_consumer consumer)
 {
@@ -484,7 +485,8 @@ int __microfs_readpage(struct file* file, struct page* page)
 		start_index, end_index, max_index);
 	
 	mutex_lock(&sbi->si_rdmutex);
-	for (i = 0; data_length < PAGE_CACHE_SIZE && blk_nr + i < blk_ptrs; ++i) {
+	for (i = 0; (data_length < PAGE_CACHE_SIZE && blk_nr + i < blk_ptrs) &&
+			(i == 0 || sbi->si_blksz < PAGE_CACHE_SIZE); ++i) {
 		err = __microfs_find_block(sb, inode, blk_ptrs, blk_nr + i,
 			&blk_data_offset, &blk_data_length);
 		if (unlikely(err)) {
@@ -542,16 +544,16 @@ int __microfs_readpage(struct file* file, struct page* page)
 		 * the same data.
 		 */
 		err = __microfs_read_blks(sb, page->mapping, &rdreq,
-			__microfs_recycle_filedata_2step,
-			__microfs_copy_filedata_2step,
+			__microfs_recycle_filedata_exceptionally,
+			__microfs_copy_filedata_exceptionally,
 			data_offset, data_length);
 	} else {
 		/* It is possible to uncompress the file data directly into
 		 * the page cache. Neat.
 		 */
 		err = __microfs_read_blks(sb, page->mapping, &rdreq,
-			__microfs_recycle_filedata_direct,
-			__microfs_copy_filedata_direct,
+			__microfs_recycle_filedata_nominally,
+			__microfs_copy_filedata_nominally,
 			data_offset, data_length);
 	}
 	if (unlikely(err)) {

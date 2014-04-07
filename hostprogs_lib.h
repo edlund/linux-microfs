@@ -21,13 +21,13 @@
 
 #include <linux/types.h>
 
+#include "libinfo.h"
+
 struct hostprog_lib {
-	/* Library id. */
-	const int hl_id;
-	/* Support for library compiled? */
+	/* Library info. */
+	const struct libinfo* hl_info;
+	/* Library support compiled? */
 	const int hl_compiled;
-	/* Human readable name. */
-	const char* hl_name;
 	/* Compression library initialization, if necessary. */
 	int (*hl_init)(void** data, __u32 blksz);
 	/* Compress data. */
@@ -43,6 +43,7 @@ struct hostprog_lib {
 };
 
 extern const struct hostprog_lib hostprog_lib_zlib;
+extern const struct hostprog_lib hostprog_lib_lz4;
 
 const struct hostprog_lib* hostprog_lib_find_byid(const int id);
 const struct hostprog_lib* hostprog_lib_find_byname(const char* name);

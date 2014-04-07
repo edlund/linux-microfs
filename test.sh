@@ -74,6 +74,7 @@ echo "$0: use tmpfs? ${conf_usetempmnt}"
 echo "$0: random seed is \"${conf_randomseed}\""
 echo "$0: size budget is \"${conf_sizebudget}\""
 echo "$0: checksum program is \"${conf_checksum}\""
+echo "$0: libraries tested: `${script_dir}/microfslib | tr '\n' ' '`"
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
 atexit_0 rm -rf "${temp_dir}"
@@ -90,6 +91,18 @@ if [[ "${conf_usetempmnt}" == "yes" && "${conf_tempmnt}" != "" ]] ; then
 	echo "$0: if anything goes wrong, inspect \"${temp_err_dir}\""
 else
 	echo "$0: tmpfs will not be used"
+fi
+
+if [[ "${conf_quicktest}" == "yes" ]] ; then
+	conf_quicktest="-T"
+else
+	conf_quicktest="-t"
+fi
+
+if [[ "${conf_stresstest}" == "yes" ]] ; then
+	conf_stresstest="-S"
+else
+	conf_stresstest=""
 fi
 
 echo "$0: running utility tests..."
@@ -232,43 +245,27 @@ devtable_simple="${devtable_simple[@]}"
 devtable_mount "${devtable_simple_cmd}" "${devtable_simple}"
 devtable_mount "${devtable_host_cmd}" "${devtable_host}"
 
-if [[ "${conf_stresstest}" == "no" ]] ; then
-	conf_stresstest=""
-else
-	conf_stresstest="-S"
-fi
-
 # Try every compression lib with different block sizes and
 # try that with and without padding.
 "${script_dir}/microfslib" > "${temp_dir}/libs.txt"
 readarray -t compression_options < "${temp_dir}/libs.txt"
 
-if [[ "${conf_quicktest}" == "no" ]] ; then
-	blocksz_options=(
-		"-b 512"
-		"-b 1024"
-		"-b 2048"
-		"-b 4096"
-		"-b 8192"
-		"-b 16384"
-		"-b 32768"
-		"-b 65536"
-		"-b 131072"
-		"-b 1048576"
-	)
-else
-	blocksz_options=(
-		"-b 512"
-		"-b 4096"
-		"-b 131072"
-		"-b 1048576"
-	)
-fi
-base_options=("${compression_options[@]/%/ -v}")
 all_options=()
-for blksz in "${blocksz_options[@]}" ; do
-	all_options=("${all_options[@]}" "${base_options[@]/%/ ${blksz}}")
+
+for compression_option in "${compression_options[@]}" ; do
+	temp_file="${temp_dir}/lib-${compression_option}.txt"
+	"${script_dir}/microfslib" -c ${compression_option} ${conf_quicktest} \
+		> "${temp_file}"
+	readarray -t blksz_options \
+		< "${temp_file}"
+	
+	blksz_options=("${blksz_options[@]/#/-b }")
+	all_options=("${all_options[@]}" "${blksz_options[@]/#/-v -c ${compression_option} }")
+	
+	unset blksz_options
+	unset temp_file
 done
+
 all_options=("${all_options[@]}" "${all_options[@]/%/ -p}")
 
 for src_cmd in "${src_cmds[@]}" ; do
@@ -317,3 +314,4 @@ echo "$0: execution time: ${_check_total_time} sec."
 echo ""
 
 exit 0
+

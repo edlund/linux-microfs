@@ -37,6 +37,7 @@ __MICROFS_BEGIN_EXTERN_C
 #include <linux/fs.h>
 #include <linux/types.h>
 
+#include "microfs_constants.h"
 #include "microfs_flags.h"
 
 #ifdef __KERNEL__
@@ -49,6 +50,8 @@ __MICROFS_BEGIN_EXTERN_C
 #include <linux/string.h>
 #include <linux/time.h>
 #include <linux/vfs.h>
+
+#include "libinfo.h"
 
 #include "microfs_compat.h"
 
@@ -71,81 +74,6 @@ static inline int microfs_ispow2(const __u64 n)
 {
 	return __MICROFS_ISPOW2(n);
 }
-
-/* Just a random nice looking integer (which at the moment of
- * writing does not yield any search results on Google).
- */
-#define MICROFS_MAGIC 0x28211407
-#define MICROFS_CIGAM 0x07142128
-
-/* microfs signature.
- */
-#define MICROFS_SIGNATURE "MinIReadOnlyFSys"
-
-/* microfs default image name.
- */
-#define MICROFS_DEFAULTNAME "Spaaaaaaaaaaace!"
-
-/* Room at the beginning of the image which can be reserved
- * for boot code.
- */
-#define MICROFS_PADDING 512
-
-/* Block size limits.
- */
-#define MICROFS_MINBLKSZ_SHIFT 9
-#define MICROFS_MINBLKSZ (1 << MICROFS_MINBLKSZ_SHIFT)
-#define MICROFS_MAXBLKSZ_SHIFT 20
-#define MICROFS_MAXBLKSZ (1 << MICROFS_MAXBLKSZ_SHIFT)
-
-/* "Bitfield" widths in %microfs_inode.
- */
-#define MICROFS_IMODE_WIDTH     16
-#define MICROFS_IUID_WIDTH      16
-#define MICROFS_IGID_WIDTH      16
-#define MICROFS_ISIZEL_WIDTH    16
-#define MICROFS_ISIZEH_WIDTH    8
-#define MICROFS_INAMELEN_WIDTH  8
-#define MICROFS_IOFFSET_WIDTH   32
-#define MICROFS_ISIZEX_WIDTH    \
-	(MICROFS_ISIZEL_WIDTH + MICROFS_ISIZEH_WIDTH)
-
-/* %microfs_inode.i_namelen gives a maximum file name length
- * of 255 bytes (not actual characters (think UTF-8)).
- */
-#define MICROFS_MAXNAMELEN \
-	((1ULL << MICROFS_INAMELEN_WIDTH) - 1)
-
-/* %microfs_inode.size* stores a 24 bit unsigned integer.
- */
-#define MICROFS_MAXFILESIZE \
-	((1ULL << MICROFS_ISIZEX_WIDTH) - 1)
-
-/* The maximum size of the metadata stored by a directory.
- */
-#define MICROFS_MAXDIRSIZE \
-	MICROFS_MAXFILESIZE
-
-/* %microfs_sb.s_size determines the upper limit but with a
- * small twist: if %microfs_sb.s_size is set to zero, then
- * the actual image size is 2^32 bytes.
- * 
- * Also note that unlike cramfs, files in microfs can not
- * extend past the last block.
- */
-#define MICROFS_MAXIMGSIZE \
-	(1ULL << 32)
-
-#define MICROFS_MINIMGSIZE \
-	(1ULL << 12)
-
-/* %microfs_sb.s_files determines the upper limit.
- */
-#define MICROFS_MAXFILES \
-	((1ULL << 16) - 1)
-
-#define MICROFS_SBSIGNATURE_LENGTH 16
-#define MICROFS_SBNAME_LENGTH 16
 
 /* "On-disk" inode.
  * 
@@ -288,38 +216,43 @@ struct microfs_sb_info {
 /* A data block decompression abstraction.
  */
 struct microfs_decompressor {
-	/* Decompressor id. */
-	const int dc_id;
+	/* Decompressor library info. */
+	const struct libinfo* dc_info;
 	/* Decompressor compiled? */
 	const int dc_compiled;
-	/* Human readable name. */
-	const char* dc_name;
 	/* Allocate the necessary private data. */
-	int (*dc_init)(struct microfs_sb_info* sbi);
+	int (*dc_create)(struct microfs_sb_info* sbi);
 	/* Free private data. */
-	int (*dc_end)(struct microfs_sb_info* sbi);
+	int (*dc_destroy)(struct microfs_sb_info* sbi);
 	/* Reset the decompressor. */
 	int (*dc_reset)(struct microfs_sb_info* sbi);
-	/* Prepare the decompressor for %__microfs_copy_filedata_2step.*/
-	int (*dc_2step_prepare)(struct microfs_sb_info* sbi);
-	/* Prepare the decompressor for %__microfs_copy_filedata_direct.*/
-	int (*dc_direct_prepare)(struct microfs_sb_info* sbi);
-	/* Should %__microfs_copy_filedata_direct provide a new page? */
-	int (*dc_direct_nextpage)(struct microfs_sb_info* sbi);
-	/* Use the page data given by %__microfs_copy_filedata_direct. */
-	int (*dc_direct_pagedata)(struct microfs_sb_info* sbi, void* page_data);
-	/* Check if the result from a %do_decompress call is erroneous. */
-	int (*dc_erroneous)(struct microfs_sb_info* sbi, int* err, int* implerr);
-	/* Decompress the data stored in the given buffer heads. */
-	int (*dc_decompress)(struct microfs_sb_info* sbi,
+	/* Prepare the decompressor for %__microfs_copy_filedata_exceptionally. */
+	int (*dc_exceptionally_begin)(struct microfs_sb_info* sbi);
+	/* Prepare the decompressor for %__microfs_copy_filedata_nominally. */
+	int (*dc_nominally_begin)(struct microfs_sb_info* sbi,
+		struct page** pages, __u32 npages);
+	/* Decompression stream: Is a new page cache page needed? */
+	int (*dc_nominally_strm_needpage)(struct microfs_sb_info* sbi);
+	/* Decompression stream: Use the given page cache page. */
+	int (*dc_nominally_strm_utilizepage)(struct microfs_sb_info* sbi,
+		struct page* page);
+	/* Decompression stream: Release the given page cache page. */
+	int (*dc_nominally_strm_releasepage)(struct microfs_sb_info* sbi,
+		struct page* page);
+	/* Use the data stored in the given buffer heads. */
+	int (*dc_consumebhs)(struct microfs_sb_info* sbi,
 		struct buffer_head** bhs, __u32 nbhs, __u32* length,
 		__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr);
-	/* Continue decompressing? */
+	/* Continue consuming bhs? */
 	int (*dc_continue)(struct microfs_sb_info* sbi,
 		int err, int implerr, __u32 length, int more_avail_out);
+	/* Complete a decompression operation. */
+	int (*dc_end)(struct microfs_sb_info* sbi, int* err,
+		int* implerr, __u32* decompressed);
 };
 
 extern const struct microfs_decompressor decompressor_zlib;
+extern const struct microfs_decompressor decompressor_lz4;
 
 static inline struct microfs_sb_info* MICROFS_SB(struct super_block* sb)
 {

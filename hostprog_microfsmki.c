@@ -386,7 +386,7 @@ static void write_superblock(struct imgspec* const spec, char* base,
 	}
 	sb->s_ctime = __cpu_to_le32(nowish.tv_sec);
 	
-	__u32 flags = spec->sp_lib->hl_id;
+	__u32 flags = spec->sp_lib->hl_info->li_id;
 	
 	sb->s_flags = __cpu_to_le32(flags);
 	
@@ -859,7 +859,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	spec->sp_szpad = spec->sp_pagesz;
 	
 	if (argc < 2)
-		usage(argc > 0? argv[0]: "", stderr, spec);
+		usage(argc > 0? argv[0]: "microfsmki", stderr, spec);
 	
 	/* Check what the user want.
 	 */
@@ -960,10 +960,15 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	spec->sp_rootdir = argv[optind + 0];
 	spec->sp_outfile = argv[optind + 1];
 	
-	if (!spec->sp_lib)
-		error("no compression library selected");
+	if (!spec->sp_lib->hl_compiled)
+		error("%s support has not been compiled", spec->sp_lib->hl_info->li_name);
 	if (spec->sp_lib->hl_init(&spec->sp_lib_data, spec->sp_blksz) < 0)
-		error("failed to init %s", spec->sp_lib->hl_name);
+		error("failed to init %s", spec->sp_lib->hl_info->li_name);
+	
+	if (spec->sp_lib->hl_info->li_min_blksz == 0 && spec->sp_blksz < spec->sp_pagesz) {
+		warning("block size smaller than page size of host"
+			" - the resulting image can not be used on this host");
+	}
 	
 	struct stat st;
 	if (stat(spec->sp_rootdir, &st) == 0) {
@@ -1031,7 +1036,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	message(VERBOSITY_1, "Block size: %llu", spec->sp_blksz);
 	message(VERBOSITY_1, "Block shift: %llu", spec->sp_blkshift);
 	
-	message(VERBOSITY_0, "Compression library: %s", spec->sp_lib->hl_name);
+	message(VERBOSITY_0, "Compression library: %s", spec->sp_lib->hl_info->li_name);
 	message(VERBOSITY_0, "Upper bound image size: %llu bytes", spec->sp_upperbound);
 	message(VERBOSITY_0, "Number of files: %llu", spec->sp_files);
 	message(VERBOSITY_0, "Directories: %llu", spec->sp_dirnodes);

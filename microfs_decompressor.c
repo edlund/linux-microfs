@@ -19,12 +19,12 @@
 #include "microfs.h"
 
 static const struct microfs_decompressor decompressor_null = {
-	.dc_id = MICROFS_FLAG_DECOMPRESSOR_NULL,
-	.dc_name = "NULL"
+	.dc_info = NULL
 };
 
 static const struct microfs_decompressor* decompressors[] = {
 	&decompressor_zlib,
+	&decompressor_lz4,
 	&decompressor_null
 };
 
@@ -35,26 +35,35 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi)
 	
 	__u32 decompressor = sbi->si_flags & MICROFS_FLAG_MASK_DECOMPRESSOR;
 	
-	for (i = 0; decompressors[i]->dc_id; i++) {
-		if (decompressors[i]->dc_id == decompressor)
+	for (i = 0; decompressors[i]->dc_info; i++) {
+		if (decompressors[i]->dc_info->li_id == decompressor)
 			break;
 	}
 	
-	if (!decompressors[i]->dc_id) {
-		pr_err("failed to find a decompressor with id 0x%x\n",
-			decompressor);
+	if (!decompressors[i]->dc_info) {
+		pr_err("failed to find a decompressor with id 0x%x\n", decompressor);
 		err = -EINVAL;
 		goto err;
-	} else if (!decompressors[i]->dc_compiled) {
-		pr_err("support for the %s decompressor has not been compiled\n",
-			decompressors[i]->dc_name);
+	}
+	if (!decompressors[i]->dc_compiled) {
+		pr_err("%s: decompressor not compiled\n",
+			decompressors[i]->dc_info->li_name);
+		err = -ENOSYS;
+		goto err;
+	}
+	
+	if (decompressors[i]->dc_info->li_min_blksz == 0 &&
+			sbi->si_blksz < PAGE_CACHE_SIZE) {
+		pr_err("%s: block size must be greater than or equal to PAGE_CACHE_SIZE",
+			decompressors[i]->dc_info->li_name);
 		err = -ENOSYS;
 		goto err;
 	}
 	
 	sbi->si_decompressor = decompressors[i];
-	return sbi->si_decompressor->dc_init(sbi);
+	return sbi->si_decompressor->dc_create(sbi);
 	
 err:
 	return err;
 }
+

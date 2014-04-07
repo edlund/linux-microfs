@@ -16,30 +16,18 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __MICROFS_FLAGS_H__
-#define __MICROFS_FLAGS_H__
-
-/* Feature flag ranges:
- * 
- * 0x00000000 - 0x000000ff: Features which will work with
- *                          all past kernels.
- * 0x00000100 - 0xffffffff: Features which will NOT work
- *                          with all past kernels.
- * 
- * 0x00000100 - 0x0000ff00: Decompressor types.
- */
-
-#define MICROFS_FLAG_DECOMPRESSOR_NULL 0x00000000
-#define MICROFS_FLAG_DECOMPRESSOR_ZLIB 0x00000100
-#define MICROFS_FLAG_DECOMPRESSOR_LZ4  0x00000200
-
-#define MICROFS_FLAG_MASK_OLDKERNELS   0x000000ff
-#define MICROFS_FLAG_MASK_DECOMPRESSOR 0x0000ff00
-
-#define MICROFS_SUPPORTED_FLAGS (MICROFS_FLAG_MASK_OLDKERNELS \
-		| MICROFS_FLAG_DECOMPRESSOR_ZLIB \
-		| MICROFS_FLAG_DECOMPRESSOR_LZ4  \
+#if !( \
+		defined(__MICROFS_H__) || \
+		defined(HOSTPROGS_LIB_H) \
 	)
-
+#error "unexpected libinfo context"
 #endif
+
+struct libinfo {
+	const int li_id;
+	const int li_streaming;
+	const __u32 li_min_blksz;
+	const __u32 li_max_blksz;
+	const char* li_name;
+};
 

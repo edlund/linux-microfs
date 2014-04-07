@@ -23,19 +23,19 @@
 #include <string.h>
 
 static const struct hostprog_lib hostprog_lib_null = {
-	.hl_id = MICROFS_FLAG_DECOMPRESSOR_NULL,
-	.hl_name = "NULL"
+	.hl_info = NULL
 };
 
 static const struct hostprog_lib* hostprog_libs[] = {
 	&hostprog_lib_zlib,
+	&hostprog_lib_lz4,
 	&hostprog_lib_null
 };
 
 const struct hostprog_lib* hostprog_lib_find_byid(const int id)
 {
-	for (int i = 0; hostprog_libs[i]->hl_id; i++) {
-		if (hostprog_libs[i]->hl_id == id) {
+	for (int i = 0; hostprog_libs[i]->hl_info; i++) {
+		if (hostprog_libs[i]->hl_info->li_id == id) {
 			if (!hostprog_libs[i]->hl_compiled)
 				break;
 			else
@@ -47,8 +47,8 @@ const struct hostprog_lib* hostprog_lib_find_byid(const int id)
 
 const struct hostprog_lib* hostprog_lib_find_byname(const char* name)
 {
-	for (int i = 0; hostprog_libs[i]->hl_id; i++) {
-		if (strcmp(hostprog_libs[i]->hl_name, name) == 0) {
+	for (int i = 0; hostprog_libs[i]->hl_info; i++) {
+		if (strcmp(hostprog_libs[i]->hl_info->li_name, name) == 0) {
 			if (!hostprog_libs[i]->hl_compiled)
 				break;
 			else

@@ -121,7 +121,7 @@ static void usage(const char* const exe, FILE* const dest)
 static struct imgdesc* create_imgdesc(int argc, char* argv[])
 {
 	if (argc < 2)
-		usage(argc > 0? argv[0]: "", stderr);
+		usage(argc > 0? argv[0]: "microfscki", stderr);
 	
 	struct imgdesc* desc = malloc(sizeof(*desc));
 	if (!desc)
@@ -276,7 +276,7 @@ sb_retry:
 		if (!desc->de_lib)
 			error("could not find a compression library with id 0x%x", lib);
 		if (desc->de_lib->hl_init(&desc->de_lib_data, desc->de_blksz) < 0)
-			error("failed to init %s", desc->de_lib->hl_name);
+			error("failed to init %s", desc->de_lib->hl_info->li_name);
 		
 		desc->de_decompressionbufsz = desc->de_lib->hl_upperbound(desc->de_lib_data, desc->de_blksz);
 		desc->de_decompressionbuf = malloc(desc->de_decompressionbufsz);
