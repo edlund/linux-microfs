@@ -54,9 +54,12 @@ static int decompressor_zlib_destroy(struct microfs_sb_info* sbi)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
 	sbi->si_decompressor_data = NULL;
-	zlib_inflateEnd(zstrm);
-	kfree(zstrm->workspace);
-	kfree(zstrm);
+	
+	if (zstrm) {
+		zlib_inflateEnd(zstrm);
+		kfree(zstrm->workspace);
+		kfree(zstrm);
+	}
 	
 	return 0;
 }
@@ -105,13 +108,13 @@ static int decompressor_zlib_nominally_begin(struct microfs_sb_info* sbi,
 	return 0;
 }
 
-static int decompressor_zlib_nominally_strm_needpage(struct microfs_sb_info* sbi)
+static int decompressor_zlib_copy_nominally_needpage(struct microfs_sb_info* sbi)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
 	return zstrm->avail_out == 0;
 }
 
-static int decompressor_zlib_nominally_strm_utilizepage(struct microfs_sb_info* sbi,
+static int decompressor_zlib_copy_nominally_utilizepage(struct microfs_sb_info* sbi,
 	struct page* page)
 {
 	struct z_stream_s* zstrm = sbi->si_decompressor_data;
@@ -124,7 +127,7 @@ static int decompressor_zlib_nominally_strm_utilizepage(struct microfs_sb_info* 
 	return 1;
 }
 
-static int decompressor_zlib_nominally_strm_releasepage(struct microfs_sb_info* sbi,
+static int decompressor_zlib_copy_nominally_releasepage(struct microfs_sb_info* sbi,
 	struct page* page)
 {
 	(void)sbi;
@@ -169,7 +172,7 @@ static int decompressor_zlib_consumebhs(struct microfs_sb_info* sbi,
 		pr_spam("decompressor_zlib_consumebhs: post; zstrm->avail_in=%u, zstrm->next_in=0x%p\n",
 			zstrm->avail_in, zstrm->next_in);
 		
-		pr_spam("decompressor_zlib_consumebhs: *zerr=%d\n", *implerr);
+		pr_spam("decompressor_zlib_consumebhs: *implerr=%d\n", *implerr);
 		
 		if (zstrm->avail_out == 0 && zstrm->next_out != NULL) {
 			/* zstrm->avail_out can be zero when zstrm->next_out is NULL.
@@ -235,9 +238,9 @@ const struct microfs_decompressor decompressor_zlib = {
 	.dc_reset = decompressor_zlib_reset,
 	.dc_exceptionally_begin = decompressor_zlib_exceptionally_begin,
 	.dc_nominally_begin = decompressor_zlib_nominally_begin,
-	.dc_nominally_strm_needpage = decompressor_zlib_nominally_strm_needpage,
-	.dc_nominally_strm_utilizepage = decompressor_zlib_nominally_strm_utilizepage,
-	.dc_nominally_strm_releasepage = decompressor_zlib_nominally_strm_releasepage,
+	.dc_copy_nominally_needpage = decompressor_zlib_copy_nominally_needpage,
+	.dc_copy_nominally_utilizepage = decompressor_zlib_copy_nominally_utilizepage,
+	.dc_copy_nominally_releasepage = decompressor_zlib_copy_nominally_releasepage,
 	.dc_consumebhs = decompressor_zlib_consumebhs,
 	.dc_continue = decompressor_zlib_continue,
 	.dc_end = decompressor_zlib_end

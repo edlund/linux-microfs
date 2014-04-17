@@ -39,7 +39,7 @@ The difference between `cramfs` and `microfs` lies in that `microfs`
  * Split the image into four main parts; 1) superblock, 2) inodes
    and dentries, 3) block pointers and 4) the compressed blocks.
    See the section "image format" for more information.
- * Support LZ4 and LZO as alternatives to zlib.
+ * Support LZ4, LZO and XZ as alternatives to zlib.
 
 ## Licensing
 
@@ -98,6 +98,7 @@ also need the following things in order to compile successfully:
  * zlib (>=1.2.7), http://www.zlib.net/
  * liblz4 (>=r94), http://code.google.com/p/lz4/ (opt)
  * liblzo (>=2.06), http://www.oberhumer.com/opensource/lzo/ (opt)
+ * xz-utils (>=5.1), http://tukaani.org/xz/ (opt)
  * python (>=2.7), http://www.python.org/
  * perl (>=5.14), http://www.perl.org/
  * cramfs-tools (>=1.1), http://sourceforge.net/projects/cramfs/ (opt)
@@ -115,6 +116,7 @@ by specifying `LIB_*`-params for make. Available options are:
  * `LIB_ZLIB`
  * `LIB_LZ4`
  * `LIB_LZO`
+ * `LIB_XZ`
 
 For example, to add support for LZ4, simply use `make LIB_LZ4=1`.
 Please note that zlib support is always compiled for the hostprogs,

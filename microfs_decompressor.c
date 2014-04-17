@@ -26,6 +26,7 @@ static const struct microfs_decompressor* decompressors[] = {
 	&decompressor_zlib,
 	&decompressor_lz4,
 	&decompressor_lzo,
+	&decompressor_xz,
 	&decompressor_null
 };
 

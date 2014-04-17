@@ -246,16 +246,16 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	page = 0;
 	
 	do {
-		if (sbi->si_decompressor->dc_nominally_strm_needpage(sbi)) {
+		if (sbi->si_decompressor->dc_copy_nominally_needpage(sbi)) {
 			if (strm_release) {
-				strm_release = sbi->si_decompressor->dc_nominally_strm_releasepage(
+				strm_release = sbi->si_decompressor->dc_copy_nominally_releasepage(
 					sbi, rdreq->rr_pages[page++]);
 			}
 			if (page < rdreq->rr_npages) {
-				strm_release = sbi->si_decompressor->dc_nominally_strm_utilizepage(
+				strm_release = sbi->si_decompressor->dc_copy_nominally_utilizepage(
 					sbi, rdreq->rr_pages[page]);
 			} else {
-				strm_release = sbi->si_decompressor->dc_nominally_strm_utilizepage(
+				strm_release = sbi->si_decompressor->dc_copy_nominally_utilizepage(
 					sbi, NULL);
 			}
 		}
@@ -269,7 +269,7 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	} while (repeat);
 	
 	if (strm_release) {
-		sbi->si_decompressor->dc_nominally_strm_releasepage(sbi,
+		sbi->si_decompressor->dc_copy_nominally_releasepage(sbi,
 			rdreq->rr_pages[page]);
 	}
 	

@@ -232,12 +232,12 @@ struct microfs_decompressor {
 	int (*dc_nominally_begin)(struct microfs_sb_info* sbi,
 		struct page** pages, __u32 npages);
 	/* Decompression stream: Is a new page cache page needed? */
-	int (*dc_nominally_strm_needpage)(struct microfs_sb_info* sbi);
+	int (*dc_copy_nominally_needpage)(struct microfs_sb_info* sbi);
 	/* Decompression stream: Use the given page cache page. */
-	int (*dc_nominally_strm_utilizepage)(struct microfs_sb_info* sbi,
+	int (*dc_copy_nominally_utilizepage)(struct microfs_sb_info* sbi,
 		struct page* page);
 	/* Decompression stream: Release the given page cache page. */
-	int (*dc_nominally_strm_releasepage)(struct microfs_sb_info* sbi,
+	int (*dc_copy_nominally_releasepage)(struct microfs_sb_info* sbi,
 		struct page* page);
 	/* Use the data stored in the given buffer heads. */
 	int (*dc_consumebhs)(struct microfs_sb_info* sbi,
@@ -254,6 +254,7 @@ struct microfs_decompressor {
 extern const struct microfs_decompressor decompressor_zlib;
 extern const struct microfs_decompressor decompressor_lz4;
 extern const struct microfs_decompressor decompressor_lzo;
+extern const struct microfs_decompressor decompressor_xz;
 
 static inline struct microfs_sb_info* MICROFS_SB(struct super_block* sb)
 {
@@ -316,29 +317,29 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi);
  * and LZO.
  */
 #if defined(MICROFS_DECOMPRESSOR_LZ4) || defined(MICROFS_DECOMPRESSOR_LZO)
-#define MICROFS_DECOMPRESSOR_LZX
-int decompressor_lzx_create(struct microfs_sb_info* sbi, __u32 upperbound);
-int decompressor_lzx_destroy(struct microfs_sb_info* sbi);
-int decompressor_lzx_reset(struct microfs_sb_info* sbi);
-int decompressor_lzx_exceptionally_begin(struct microfs_sb_info* sbi);
-int decompressor_lzx_nominally_begin(struct microfs_sb_info* sbi,
+#define MICROFS_DECOMPRESSOR_LZ
+int decompressor_lz_create(struct microfs_sb_info* sbi, __u32 upperbound);
+int decompressor_lz_destroy(struct microfs_sb_info* sbi);
+int decompressor_lz_reset(struct microfs_sb_info* sbi);
+int decompressor_lz_exceptionally_begin(struct microfs_sb_info* sbi);
+int decompressor_lz_nominally_begin(struct microfs_sb_info* sbi,
 	struct page** pages, __u32 npages);
-int decompressor_lzx_nominally_strm_needpage(
+int decompressor_lz_copy_nominally_needpage(
 	struct microfs_sb_info* sbi);
-int decompressor_lzx_nominally_strm_utilizepage(
+int decompressor_lz_copy_nominally_utilizepage(
 	struct microfs_sb_info* sbi, struct page* page);
-int decompressor_lzx_nominally_strm_releasepage(
+int decompressor_lz_copy_nominally_releasepage(
 	struct microfs_sb_info* sbi, struct page* page);
-int decompressor_lzx_consumebhs(struct microfs_sb_info* sbi,
+int decompressor_lz_consumebhs(struct microfs_sb_info* sbi,
 	struct buffer_head** bhs, __u32 nbhs, __u32* length,
 	__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr);
-int decompressor_lzx_continue(struct microfs_sb_info* sbi,
+int decompressor_lz_continue(struct microfs_sb_info* sbi,
 	int err, int implerr, __u32 length, int more_avail_out);
-typedef int (*decompressor_lzx_end_consumer)(struct microfs_sb_info* sbi,
+typedef int (*decompressor_lz_end_consumer)(struct microfs_sb_info* sbi,
 	int* implerr, char* input, __u32 inputsz, char* output, __u32* outputsz);
-int decompressor_lzx_end(struct microfs_sb_info* sbi,
+int decompressor_lz_end(struct microfs_sb_info* sbi,
 	int* err, int* implerr, __u32* decompressed,
-	decompressor_lzx_end_consumer consumer);
+	decompressor_lz_end_consumer consumer);
 #endif
 
 #endif

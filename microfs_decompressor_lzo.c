@@ -26,7 +26,7 @@
 
 int decompressor_lzo_create(struct microfs_sb_info* sbi)
 {
-	return decompressor_lzx_create(sbi, lzo1x_worst_compress(sbi->si_blksz));
+	return decompressor_lz_create(sbi, lzo1x_worst_compress(sbi->si_blksz));
 }
 
 static int decompressor_lzo_end_consumer(struct microfs_sb_info* sbi,
@@ -45,7 +45,7 @@ static int decompressor_lzo_end_consumer(struct microfs_sb_info* sbi,
 static int decompressor_lzo_end(struct microfs_sb_info* sbi,
 	int* err, int* implerr, __u32* decompressed)
 {
-	return decompressor_lzx_end(sbi, err, implerr, decompressed,
+	return decompressor_lz_end(sbi, err, implerr, decompressed,
 		decompressor_lzo_end_consumer);
 }
 
@@ -53,15 +53,15 @@ const struct microfs_decompressor decompressor_lzo = {
 	.dc_info = &libinfo_lzo,
 	.dc_compiled = 1,
 	.dc_create = decompressor_lzo_create,
-	.dc_destroy = decompressor_lzx_destroy,
-	.dc_reset = decompressor_lzx_reset,
-	.dc_exceptionally_begin = decompressor_lzx_exceptionally_begin,
-	.dc_nominally_begin = decompressor_lzx_nominally_begin,
-	.dc_nominally_strm_needpage = decompressor_lzx_nominally_strm_needpage,
-	.dc_nominally_strm_utilizepage = decompressor_lzx_nominally_strm_utilizepage,
-	.dc_nominally_strm_releasepage = decompressor_lzx_nominally_strm_releasepage,
-	.dc_consumebhs = decompressor_lzx_consumebhs,
-	.dc_continue = decompressor_lzx_continue,
+	.dc_destroy = decompressor_lz_destroy,
+	.dc_reset = decompressor_lz_reset,
+	.dc_exceptionally_begin = decompressor_lz_exceptionally_begin,
+	.dc_nominally_begin = decompressor_lz_nominally_begin,
+	.dc_copy_nominally_needpage = decompressor_lz_copy_nominally_needpage,
+	.dc_copy_nominally_utilizepage = decompressor_lz_copy_nominally_utilizepage,
+	.dc_copy_nominally_releasepage = decompressor_lz_copy_nominally_releasepage,
+	.dc_consumebhs = decompressor_lz_consumebhs,
+	.dc_continue = decompressor_lz_continue,
 	.dc_end = decompressor_lzo_end
 };
 
