@@ -78,13 +78,14 @@ static inline int microfs_ispow2(const __u64 n)
 /* "On-disk" inode.
  * 
  * Compared to cramfs_inode this representation is slightly
- * more verbose. It comes with three benefits:
+ * more verbose. It comes with four benefits:
  * 
  * #1: GIDs are not truncated.
- * #2: Images can be much larger.
+ * #2: Images can be much larger (2^32 bytes).
  * #3: File names can be slightly longer.
+ * #4: Files can be much larger (2^32 - 1 bytes).
  * 
- * (Disclaimer: #2 and #3 might not be _that_ useful.)
+ * (Disclaimer: #2, #3 and #4 might not be _that_ useful.)
  */
 struct microfs_inode {
 	/* File mode. */
@@ -93,10 +94,8 @@ struct microfs_inode {
 	__le16 i_uid;
 	/* Low 16 bits of Group ID. */
 	__le16 i_gid;
-	/* Low 16 bits of file size. */
-	__le16 i_sizel;
-	/* High 8 bits of file size. */
-	__u8 i_sizeh;
+	/* File size. */
+	__le32 i_size;
 	/* Filename length. */
 	__u8 i_namelen;
 	/* Offset for the block pointers. */
@@ -137,24 +136,21 @@ struct microfs_sb {
  */
 static inline __u32 i_getsize(const struct microfs_inode* const ino)
 {
-	__u32 hi = (__u32)ino->i_sizeh << MICROFS_ISIZEL_WIDTH;
-	__u32 lo = (__u32)__le16_to_cpu(ino->i_sizel);
-	return hi | lo;
+	return __le32_to_cpu(ino->i_size);
 }
 
 /* Store the given size in the %i_size*-fields of the given
  * inode. Pretty much only used by `microfsmki`.
  */
-static inline void i_setsize(struct microfs_inode* const ino, __u32 size)
+static inline void i_setsize(struct microfs_inode* const ino, const __u32 size)
 {
-	ino->i_sizel = __cpu_to_le16((__u16)size);
-	ino->i_sizeh = (__u8)(size >> MICROFS_ISIZEL_WIDTH);
+	ino->i_size = __cpu_to_le32(size);
 }
 
 /* Get the number of blocks required for a file of %size
  * bytes with the given %blksz.
  */
-static inline __u32 i_blks(__u32 sz, __u32 blksz)
+static inline __u32 i_blks(const __u32 sz, const __u32 blksz)
 {
 	return sz == 0? 0: (sz - 1) / blksz + 1;
 }

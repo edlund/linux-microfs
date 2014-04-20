@@ -215,7 +215,7 @@ devtable_mount() {
 # Try to use device tables.
 devtable_host_cmd=(
 	"${script_dir}/tools/devtmk"
-	"24"
+	"32"
 	"\"${temp_dir}/devtable_host.txt\""
 	"/"
 	"/dev"

@@ -32,8 +32,8 @@ START_TEST(test_microfs_ispow2)
 END_TEST
 
 START_TEST(test_packed_structs)
-	_ck_assert_int(sizeof(struct microfs_inode), ==, 14);
-	_ck_assert_int(sizeof(struct microfs_sb), ==, 76);
+	_ck_assert_int(sizeof(struct microfs_inode), ==, 15);
+	_ck_assert_int(sizeof(struct microfs_sb), ==, 77);
 END_TEST
 
 START_TEST(test_i_xsize)

@@ -50,28 +50,9 @@
 #define MICROFS_IMODE_WIDTH     16
 #define MICROFS_IUID_WIDTH      16
 #define MICROFS_IGID_WIDTH      16
-#define MICROFS_ISIZEL_WIDTH    16
-#define MICROFS_ISIZEH_WIDTH    8
+#define MICROFS_ISIZE_WIDTH     32
 #define MICROFS_INAMELEN_WIDTH  8
 #define MICROFS_IOFFSET_WIDTH   32
-#define MICROFS_ISIZEX_WIDTH    \
-	(MICROFS_ISIZEL_WIDTH + MICROFS_ISIZEH_WIDTH)
-
-/* %microfs_inode.i_namelen gives a maximum file name length
- * of 255 bytes (not actual characters (think UTF-8)).
- */
-#define MICROFS_MAXNAMELEN \
-	((1ULL << MICROFS_INAMELEN_WIDTH) - 1)
-
-/* %microfs_inode.size* stores a 24 bit unsigned integer.
- */
-#define MICROFS_MAXFILESIZE \
-	((1ULL << MICROFS_ISIZEX_WIDTH) - 1)
-
-/* The maximum size of the metadata stored by a directory.
- */
-#define MICROFS_MAXDIRSIZE \
-	MICROFS_MAXFILESIZE
 
 /* %microfs_sb.s_size determines the upper limit but with a
  * small twist: if %microfs_sb.s_size is set to zero, then
@@ -85,6 +66,23 @@
 
 #define MICROFS_MINIMGSIZE \
 	(1ULL << 12)
+
+/* %microfs_inode.i_namelen gives a maximum file name length
+ * of 255 bytes (not actual characters (think UTF-8)).
+ */
+#define MICROFS_MAXNAMELEN \
+	((1ULL << MICROFS_INAMELEN_WIDTH) - 1)
+
+#define MICROFS_MAXFILESIZE \
+	((1ULL << MICROFS_ISIZE_WIDTH) - 1)
+
+#define MICROFS_MAXCRAMSIZE \
+	((1ULL << 24) - 1)
+
+/* The maximum size of the metadata stored by a directory.
+ */
+#define MICROFS_MAXDIRSIZE \
+	MICROFS_MAXCRAMSIZE
 
 /* %microfs_sb.s_files determines the upper limit.
  */

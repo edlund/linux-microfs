@@ -38,14 +38,14 @@ struct entry {
 	char* e_path;
 	/* File mode. */
 	unsigned int e_mode;
-	/* File size. */
-	unsigned int e_size;
 	/* File UID. */
 	unsigned int e_uid;
 	/* File GID. */
 	unsigned int e_gid;
+	/* File size. */
+	__u64 e_size;
 	/* Block pointers required for for the entry (if reg or lnk). */
-	unsigned int e_blkptrs;
+	__u32 e_blkptrs;
 	/* File descriptor used when mapping the entry. */
 	int e_fd;
 	/* Uncompressed file data. */
@@ -292,6 +292,10 @@ static unsigned int walk_directory(struct imgspec* const spec,
 			if (ent->e_size > MICROFS_MAXFILESIZE) {
 				error("\"%s\" is too big, max file size is %llu bytes",
 					path->p_path, MICROFS_MAXFILESIZE);
+			} else if (ent->e_size > MICROFS_MAXCRAMSIZE) {
+				warning("\"%s\" is a big file, microfs works best with files"
+					" smaller than %llu bytes",
+					path->p_path, MICROFS_MAXCRAMSIZE);
 			}
 			ent->e_path = strdup(path->p_path);
 			if (!ent->e_path) {
@@ -305,7 +309,7 @@ static unsigned int walk_directory(struct imgspec* const spec,
 			}
 		} else if (S_ISCHR(ent->e_mode) || S_ISBLK(ent->e_mode)) {
 			ent->e_size = makedev_lim(major(st.st_rdev), minor(st.st_rdev),
-				MICROFS_ISIZEX_WIDTH);
+				MICROFS_ISIZE_WIDTH);
 		} else if (S_ISFIFO(ent->e_mode) || S_ISSOCK(ent->e_mode)) {
 			ent->e_size = 0;
 		} else {
@@ -996,7 +1000,7 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	
 	if (spec->sp_devtable)
 		devtable_parse(devtable_process_dentry, spec,
-			spec->sp_devtable, MICROFS_ISIZEX_WIDTH);
+			spec->sp_devtable, MICROFS_ISIZE_WIDTH);
 	
 	if (spec->sp_usrupperbound && spec->sp_upperbound > spec->sp_usrupperbound) {
 		warning("the estimated upper bound %llu is larger than the"

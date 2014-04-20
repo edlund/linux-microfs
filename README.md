@@ -24,13 +24,15 @@ The difference between `cramfs` and `microfs` lies in that `microfs`
  * Support configurable block sizes (ranging from 512 bytes up to
    1 megabyte).
  * Support image sizes larger than 272 mb (the upper limit is
-   2^32 bytes).
+   `2^32` bytes).
+ * Support files sizes larger than 16 mb (the upper limit is
+   `2^32 - 1` bytes).
  * Support slightly longer file names (3 extra bytes).
  * Support ctime/mtime values for VFS inodes by using the ctime
    value for the image stored in the superblock.
  * Will try to uncompress data from the buffer heads directly
    to the page cache pages if it is possible.
- * Will have different read buffers and and decompressors for
+ * Will have different read buffers and decompressors for
    different mounted images. (`microfs` will therefore always use
    more memory than `cramfs`.)
  * Does not support file holes by simply skipping the zero bytes
@@ -59,7 +61,7 @@ target that it would require extra effort to develop against.
 
 Supported kernels at the time of writing:
 
- * Ubuntu: `3.11.0-x-generic` (13.10, "Saucy Salamander")
+ * Ubuntu: `3.13.0-x-generic` (14.04, "Trusty Tahr")
  * Debian: `3.12-0.bpo.x-486` (7, "Wheezy")
  * Debian: `3.12-0.bpo.x-amd64` (7, "Wheezy")
  * Raspbian: `3.10.25+`
@@ -223,22 +225,8 @@ compression algorithms is implemented.
 
 ## A small list of mixed TODOs, FIXMEs, WTFs and the sort
 
- * Implement support for different compression algorithms.
- * Is the pseudorandomness reproducible enough?
  * Add support for `mkrandtree.py` to generate "less random"
    data which will compress acceptably well.
- * Directories are structured and read just like they are in
-   `cramfs`. This is probably a good thing, but no thought or
-   effort at all has been put into investigating if that is
-   true (so far).
- * `microfsmki` and `microfscki` both require high amount of
-   RAM available since they both use mmap() to map the whole
-   image they are working on (the reason being; it is a
-   solution which is easy to implement and easy to understand).
-   This is probably not an issue since most workstations have
-   plenty of RAM. It is however possible that the memory
-   requirement is unreasonable, if so, it should be possible
-   to rewrite them.
  * The devtable support seems to be quite buggy when tested
    on real machines (non-virtual).
  * There seems to be something wrong with the performance
