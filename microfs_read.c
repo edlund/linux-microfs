@@ -251,13 +251,8 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 				strm_release = sbi->si_decompressor->dc_copy_nominally_releasepage(
 					sbi, rdreq->rr_pages[page++]);
 			}
-			if (page < rdreq->rr_npages) {
-				strm_release = sbi->si_decompressor->dc_copy_nominally_utilizepage(
-					sbi, rdreq->rr_pages[page]);
-			} else {
-				strm_release = sbi->si_decompressor->dc_copy_nominally_utilizepage(
-					sbi, NULL);
-			}
+			strm_release = sbi->si_decompressor->dc_copy_nominally_utilizepage(
+				sbi, page < rdreq->rr_npages? rdreq->rr_pages[page]: NULL);
 		}
 		
 		err = sbi->si_decompressor->dc_consumebhs(sbi, bhs, nbhs, &length,

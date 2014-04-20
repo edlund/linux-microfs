@@ -124,7 +124,7 @@ static int decompressor_zlib_copy_nominally_utilizepage(struct microfs_sb_info* 
 	} else {
 		zstrm->next_out = NULL;
 	}
-	return 1;
+	return zstrm->next_out != NULL;
 }
 
 static int decompressor_zlib_copy_nominally_releasepage(struct microfs_sb_info* sbi,

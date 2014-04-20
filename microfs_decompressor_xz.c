@@ -128,7 +128,7 @@ static int decompressor_xz_copy_nominally_utilizepage(struct microfs_sb_info* sb
 	} else {
 		xzdat->xz_buf.out = NULL;
 	}
-	return 1;
+	return xzdat->xz_buf.out != NULL;
 }
 
 static int decompressor_xz_copy_nominally_releasepage(struct microfs_sb_info* sbi,
