@@ -62,8 +62,8 @@ target that it would require extra effort to develop against.
 Supported kernels at the time of writing:
 
  * Ubuntu: `3.13.0-x-generic` (14.04, "Trusty Tahr")
- * Debian: `3.12-0.bpo.x-486` (7, "Wheezy")
- * Debian: `3.12-0.bpo.x-amd64` (7, "Wheezy")
+ * Debian: `3.13-0.bpo.x-486` (7, "Wheezy")
+ * Debian: `3.13-0.bpo.x-amd64` (7, "Wheezy")
  * Raspbian: `3.10.25+`
 
 It may well work with other versions and other dists, but that
