@@ -251,7 +251,7 @@ posted below for anyone interested in doing so.
 
 Command:
 
-   linux-microfs/tools/rofsbench.sh -n 10 -r 1387916272 \
+    linux-microfs/tools/rofsbench.sh -n 10 -r 1387916272 \
         -b 4096 -B 117440512 -w /home/pi/perf/
 
 Result:
