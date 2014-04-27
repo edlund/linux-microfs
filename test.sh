@@ -30,9 +30,10 @@ conf_stresstest="no"
 conf_usetempmnt="yes"
 conf_tempmnt="size=448M,nr_inodes=32k,mode=0755"
 conf_sizebudget="134217728"
+conf_filecontent="uncompressable"
 conf_randomseed="`date +%s`"
 conf_checksum="sha512sum"
-options="QSMm:b:r:C:c:"
+options="QSMm:b:f:r:C:c:"
 while getopts $options option
 do
 	case $option in
@@ -41,6 +42,7 @@ do
 		M ) conf_usetempmnt="no" ;;
 		m ) conf_tempmnt=$OPTARG ;;
 		b ) conf_sizebudget=$OPTARG ;;
+		f ) conf_filecontent=$OPTARG ;;
 		r ) conf_randomseed=$OPTARG ;;
 		C ) conf_checksum=$OPTARG ;;
 		c ) src_cmds+=("${OPTARG}") ;;
@@ -57,7 +59,8 @@ src_cmds+=(
 --random-seed=${conf_randomseed}"
 	"${script_dir}/tools/mkrandtree.py \
 --random-seed=${conf_randomseed} \
---size-budget=${conf_sizebudget}"
+--size-budget=${conf_sizebudget} \
+--file-content=${conf_filecontent}_bytes"
 )
 
 # Rely on the credentials being cached after the first sudo.

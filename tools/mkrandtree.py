@@ -44,6 +44,7 @@ import functools
 import itertools
 import os
 import random
+import string
 import sys
 import time
 
@@ -67,9 +68,21 @@ def generate_name(glyphs, max_length, alpha, beta):
 	length = int(random.betavariate(alpha, beta) / part) + 1
 	return "".join([random.choice(glyphs) for _ in xrange(0, length)])
 
-def generate_bytes(n):
-	"""Generate n random bytes."""
-	return bytearray([random.getrandbits(8) for _ in xrange(n)])
+def compressable_bytes(n):
+	"""Generate n bytes which will compress relatively nicely."""
+	randbytes = []
+	while len(randbytes) < n:
+		randbytes.append(ord(random.choice(string.hexdigits)))
+	return bytearray(randbytes)
+
+def uncompressable_bytes(n):
+	"""Generate n random bytes which are difficult to compress."""
+	randbytes = []
+	for i in [random.getrandbits(32) for _ in xrange(int(n / 4) + 1)]:
+		for shift in [0, 8, 16, 24]:
+			if len(randbytes) < n:
+				randbytes.append((i >> shift) & 0xff)
+	return bytearray(randbytes)
 
 def create_directories(base_path, current_level, max_level,
 		max_subdirs, get_name, verbose=False):
@@ -115,7 +128,7 @@ def create_files(directories, size_budget, max_file_size,
 			while file_path in existing_paths:
 				file_path = os.path.join(dir_name, get_name())
 			file_paths.append(file_path)
-			file_content = generate_bytes(file_size)
+			file_content = globals()[args.file_content](file_size)
 			with open(file_path, 'w') as f:
 				f.write(file_content)
 			if verbose:
@@ -215,6 +228,16 @@ if __name__ == "__main__":
 	)
 	
 	argsparser.add_argument(
+		"--file-content",
+		dest="file_content",
+		metavar="",
+		help="the file content generator",
+		default="uncompressable_bytes",
+		type=str,
+		choices=["uncompressable_bytes", "compressable_bytes"]
+	)
+	
+	argsparser.add_argument(
 		"dirname",
 		help="output directory",
 		type=str
@@ -224,6 +247,7 @@ if __name__ == "__main__":
 	
 	print("dirname: {name}".format(name=args.dirname))
 	print("random seed: {seed}".format(seed=args.random_seed))
+	print("file content: {generator}".format(generator=args.file_content))
 	
 	os.mkdir(args.dirname)
 	random.seed(args.random_seed)
