@@ -117,10 +117,12 @@ else
 fi
 
 if [[ $load_cramfs -eq 1 ]] ; then
-	modprobe cramfs
+	echo "$0: modprobe cramfs"
+	sudo modprobe cramfs
 fi
 if [[ $load_squashfs -eq 1 ]] ; then
-	modprobe squashfs
+	echo "$0: modprobe squashfs"
+	sudo modprobe squashfs
 fi
 
 # Trim any trailing slashes.
