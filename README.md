@@ -64,7 +64,7 @@ Supported kernels at the time of writing:
  * Ubuntu: `3.13.0-x-generic` (14.04, "Trusty Tahr")
  * Debian: `3.13-0.bpo.x-486` (7, "Wheezy")
  * Debian: `3.13-0.bpo.x-amd64` (7, "Wheezy")
- * Raspbian: `3.10.25+`
+ * Raspbian: `3.10-x-rpi` (Raspbian kernel)
 
 It may well work with other versions and other dists, but that
 has not been tested.
@@ -220,18 +220,292 @@ One should probably avoid stress testing.
 
 ## Performance
 
-This section will be updated once support for different
-compression algorithms is implemented.
+Obviously every block size tested larger than `PAGE_CACHE_SIZE`
+will mostly be interesting to compare `microfs` with `squashfs`,
+`cramfs` will still use `PAGE_CACHE_SIZE` sized blocks.
+
+The result presented by the benchmark tools is the average
+time that a test took over `N` passes. The idea is that the
+average should give a more fair representation of the performance
+of the filesystem than a single pass would.
+
+Still, with all this said, it is still probably wise to consider
+the bundled benchmark tools to be biased towards making `microfs`
+look good, even if that is not the intention.
+
+### Results
+
+A few results from benchmarks performed on a test machine
+are included. They are listed below. The command found before
+each result listing can be used to run the benchmark that
+generated the result in question.
+
+The test machine is a RaspberryPI Model-B Rev2, running at
+700 MHz with the debian style packaged kernel provided by
+Raspbian. Hopefully it will be easy to replicate the results
+posted below for anyone interested in doing so.
+
+#### 112 MB; 19 directories, 330 files
+
+##### Block size 4096 bytes, 10 passes
+
+Command:
+
+   linux-microfs/tools/rofsbench.sh -n 10 -r 1387916272 \
+        -b 4096 -B 117440512 -w /home/pi/perf/
+
+Result:
+
+    Test 0: list all recursively
+    Command: `ls -lAR /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.2050    sys=0.1030    user=0.0480
+        squashfs: real=0.1710    sys=0.0690    user=0.0520
+        cramfs:   real=0.1610    sys=0.0480    user=0.0690
+
+    Test 1: find all
+    Command: `find /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.0600    sys=0.0180    user=0.0050
+        squashfs: real=0.0600    sys=0.0090    user=0.0110
+        cramfs:   real=0.0600    sys=0.0120    user=0.0080
+
+    Test 2: find files
+    Command: `find /home/pi/perf/tmpfs/mnt -type f`
+        microfs:  real=0.0700    sys=0.0150    user=0.0150
+        squashfs: real=0.0620    sys=0.0190    user=0.0110
+        cramfs:   real=0.0630    sys=0.0140    user=0.0140
+
+    Test 3: seq access, seq reading
+    Command: `tools/frd -e -s 1387916272 -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0320    sys=6.7580    user=0.0430
+        squashfs: real=10.2740   sys=5.7360    user=0.0510
+        cramfs:   real=7.7970    sys=5.6260    user=0.0430
+
+    Test 4: seq access, stat-only
+    Command: `tools/frd -e -s 1387916272 -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0210    sys=0.0070    user=0.0030
+        squashfs: real=0.0200    sys=0.0050    user=0.0050
+        cramfs:   real=0.0200    sys=0.0060    user=0.0040
+
+    Test 5: rand access, seq reading
+    Command: `tools/frd -e -s 1387916272 -R -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0890    sys=6.7960    user=0.0450
+        squashfs: real=10.2780   sys=5.7450    user=0.0440
+        cramfs:   real=7.8140    sys=5.6560    user=0.0360
+
+    Test 6: rand access, stat-only
+    Command: `tools/frd -e -s 1387916272 -R -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0200    sys=0.0080    user=0.0020
+        squashfs: real=0.0200    sys=0.0070    user=0.0030
+        cramfs:   real=0.0200    sys=0.0080    user=0.0020
+
+    Test 7: seq access, rand reading
+    Command: `tools/frd -e -s 1387916272 -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0670    sys=6.7890    user=0.0720
+        squashfs: real=10.6380   sys=6.0060    user=0.0810
+        cramfs:   real=8.7300    sys=6.4380    user=0.0990
+
+    Test 8: rand access, rand reading
+    Command: `tools/frd -e -s 1387916272 -R -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0440    sys=6.7530    user=0.0970
+        squashfs: real=10.6460   sys=6.0300    user=0.0690
+        cramfs:   real=8.7060    sys=6.4240    user=0.1090
+
+##### Block size 131072 bytes, 10 passes
+
+Command:
+
+    linux-microfs/tools/rofsbench.sh -n 10 -r 1387916272 \
+        -b 131072 -B 117440512 -w /home/pi/perf/
+
+Result:
+
+    Test 0: list all recursively
+    Command: `ls -lAR /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.2010    sys=0.1040    user=0.0460
+        squashfs: real=0.1630    sys=0.0650    user=0.0550
+        cramfs:   real=0.1670    sys=0.0560    user=0.0630
+
+    Test 1: find all
+    Command: `find /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.0600    sys=0.0200    user=0.0050
+        squashfs: real=0.0600    sys=0.0120    user=0.0080
+        cramfs:   real=0.0600    sys=0.0100    user=0.0100
+
+    Test 2: find files
+    Command: `find /home/pi/perf/tmpfs/mnt -type f`
+        microfs:  real=0.0700    sys=0.0190    user=0.0110
+        squashfs: real=0.0600    sys=0.0250    user=0.0050
+        cramfs:   real=0.0600    sys=0.0170    user=0.0110
+
+    Test 3: seq access, seq reading
+    Command: `tools/frd -e -s 1387916272 -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=6.0160    sys=4.3010    user=0.0550
+        squashfs: real=8.5080    sys=4.5840    user=0.0500
+        cramfs:   real=7.7740    sys=5.6070    user=0.0600
+
+    Test 4: seq access, stat-only
+    Command: `tools/frd -e -s 1387916272 -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0200    sys=0.0050    user=0.0050
+        squashfs: real=0.0220    sys=0.0110    user=0.0000
+        cramfs:   real=0.0200    sys=0.0050    user=0.0050
+
+    Test 5: rand access, seq reading
+    Command: `tools/frd -e -s 1387916272 -R -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=6.0290    sys=4.3200    user=0.0480
+        squashfs: real=8.6120    sys=4.7280    user=0.0360
+        cramfs:   real=7.8170    sys=5.6470    user=0.0480
+
+    Test 6: rand access, stat-only
+    Command: `tools/frd -e -s 1387916272 -R -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0200    sys=0.0050    user=0.0050
+        squashfs: real=0.0200    sys=0.0070    user=0.0030
+        cramfs:   real=0.0200    sys=0.0070    user=0.0030
+
+    Test 7: seq access, rand reading
+    Command: `tools/frd -e -s 1387916272 -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=6.0700    sys=4.3420    user=0.0640
+        squashfs: real=8.4540    sys=4.5570    user=0.0540
+        cramfs:   real=8.7370    sys=6.4860    user=0.0710
+
+    Test 8: rand access, rand reading
+    Command: `tools/frd -e -s 1387916272 -R -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=6.0660    sys=4.3280    user=0.0720
+        squashfs: real=8.6100    sys=4.7060    user=0.0570
+        cramfs:   real=8.7230    sys=6.4480    user=0.0950
+
+
+#### 112 MB; 0 directories, 36 files
+
+##### Block size 4096 bytes, 10 passes
+
+Command:
+
+    linux-microfs/tools/rofsbench.sh -n 10 -r 1389877799 \
+        -b 4096 -B 117440512 -w /home/pi/perf/
+
+Result:
+
+    Test 0: list all recursively
+    Command: `ls -lAR /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.1010    sys=0.0260    user=0.0150
+        squashfs: real=0.1030    sys=0.0270    user=0.0130
+        cramfs:   real=0.0940    sys=0.0270    user=0.0130
+
+    Test 1: find all
+    Command: `find /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.0520    sys=0.0070    user=0.0030
+        squashfs: real=0.0500    sys=0.0080    user=0.0020
+        cramfs:   real=0.0520    sys=0.0090    user=0.0020
+
+    Test 2: find files
+    Command: `find /home/pi/perf/tmpfs/mnt -type f`
+        microfs:  real=0.0500    sys=0.0060    user=0.0050
+        squashfs: real=0.0500    sys=0.0090    user=0.0010
+        cramfs:   real=0.0500    sys=0.0050    user=0.0050
+
+    Test 3: seq access, seq reading
+    Command: `tools/frd -e -s 1389877799 -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0470    sys=6.7440    user=0.0490
+        squashfs: real=10.6530   sys=6.0670    user=0.0410
+        cramfs:   real=7.7680    sys=5.6060    user=0.0440
+
+    Test 4: seq access, stat-only
+    Command: `tools/frd -e -s 1389877799 -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0200    sys=0.0080    user=0.0020
+        squashfs: real=0.0210    sys=0.0070    user=0.0030
+        cramfs:   real=0.0220    sys=0.0090    user=0.0010
+
+    Test 5: rand access, seq reading
+    Command: `tools/frd -e -s 1389877799 -R -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0340    sys=6.7370    user=0.0480
+        squashfs: real=10.6470   sys=6.0670    user=0.0450
+        cramfs:   real=7.7990    sys=5.6060    user=0.0530
+
+    Test 6: rand access, stat-only
+    Command: `tools/frd -e -s 1389877799 -R -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0200    sys=0.0080    user=0.0020
+        squashfs: real=0.0200    sys=0.0050    user=0.0050
+        cramfs:   real=0.0210    sys=0.0100    user=0.0000
+
+    Test 7: seq access, rand reading
+    Command: `tools/frd -e -s 1389877799 -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0660    sys=6.7780    user=0.0750
+        squashfs: real=11.0610   sys=6.3760    user=0.0710
+        cramfs:   real=8.7260    sys=6.4560    user=0.0780
+
+    Test 8: rand access, rand reading
+    Command: `tools/frd -e -s 1389877799 -R -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=9.0850    sys=6.7720    user=0.0890
+        squashfs: real=11.0750   sys=6.3770    user=0.0790
+        cramfs:   real=8.7440    sys=6.4620    user=0.0910
+
+##### Block size 131072 bytes, 10 passes
+
+Command:
+
+    linux-microfs/tools/rofsbench.sh -n 10 -r 1389877799 \
+        -b 131072 -B 117440512 -w /home/pi/perf/
+
+Result:
+
+    Test 0: list all recursively
+    Command: `ls -lAR /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.0860    sys=0.0240    user=0.0160
+        squashfs: real=0.0800    sys=0.0200    user=0.0190
+        cramfs:   real=0.0820    sys=0.0280    user=0.0080
+
+    Test 1: find all
+    Command: `find /home/pi/perf/tmpfs/mnt`
+        microfs:  real=0.0500    sys=0.0050    user=0.0050
+        squashfs: real=0.0500    sys=0.0040    user=0.0060
+        cramfs:   real=0.0500    sys=0.0040    user=0.0060
+
+    Test 2: find files
+    Command: `find /home/pi/perf/tmpfs/mnt -type f`
+        microfs:  real=0.0500    sys=0.0030    user=0.0070
+        squashfs: real=0.0520    sys=0.0070    user=0.0040
+        cramfs:   real=0.0520    sys=0.0060    user=0.0040
+
+    Test 3: seq access, seq reading
+    Command: `tools/frd -e -s 1389877799 -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=5.9700    sys=4.2700    user=0.0420
+        squashfs: real=8.4100    sys=4.5170    user=0.0400
+        cramfs:   real=7.7640    sys=5.5820    user=0.0470
+
+    Test 4: seq access, stat-only
+    Command: `tools/frd -e -s 1389877799 -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0100    sys=0.0070    user=0.0030
+        squashfs: real=0.0100    sys=0.0050    user=0.0050
+        cramfs:   real=0.0110    sys=0.0050    user=0.0050
+
+    Test 5: rand access, seq reading
+    Command: `tools/frd -e -s 1389877799 -R -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=5.9820    sys=4.2760    user=0.0370
+        squashfs: real=8.4210    sys=4.5160    user=0.0470
+        cramfs:   real=7.7580    sys=5.5780    user=0.0460
+
+    Test 6: rand access, stat-only
+    Command: `tools/frd -e -s 1389877799 -R -N -i /home/pi/perf/tmpfs/tmp/all-paths.txt`
+        microfs:  real=0.0100    sys=0.0070    user=0.0030
+        squashfs: real=0.0110    sys=0.0100    user=0.0000
+        cramfs:   real=0.0110    sys=0.0070    user=0.0030
+
+    Test 7: seq access, rand reading
+    Command: `tools/frd -e -s 1389877799 -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=6.0380    sys=4.2920    user=0.0660
+        squashfs: real=8.4040    sys=4.4820    user=0.0620
+        cramfs:   real=8.7260    sys=6.4260    user=0.1020
+
+    Test 8: rand access, rand reading
+    Command: `tools/frd -e -s 1389877799 -R -r -i /home/pi/perf/tmpfs/tmp/file-paths.txt`
+        microfs:  real=6.0140    sys=4.3030    user=0.0500
+        squashfs: real=8.3960    sys=4.4840    user=0.0640
+        cramfs:   real=8.7240    sys=6.4560    user=0.0790
 
 ## A small list of mixed TODOs, FIXMEs, WTFs and the sort
 
- * Add support for `mkrandtree.py` to generate "less random"
-   data which will compress acceptably well.
  * The devtable support seems to be quite buggy when tested
    on real machines (non-virtual).
- * There seems to be something wrong with the performance
-   tests, the results seem *very inconsistent* when compared
-   between virtual and real machines.
  * Update the benchmark tools.
 
 ## Ideas for possible future development
