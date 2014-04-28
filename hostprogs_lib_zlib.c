@@ -22,6 +22,11 @@
 
 #include "libinfo_zlib.h"
 
+#include <errno.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <zlib.h>
 
 __u32 hostprog_lib_zlib_crc32(char* data, __u64 sz)
@@ -32,19 +37,57 @@ __u32 hostprog_lib_zlib_crc32(char* data, __u64 sz)
 
 static int hostprog_lib_zlib_init(void** data, __u32 blksz)
 {
-	(void)data;
 	(void)blksz;
 	
+	if (!(*data = malloc(sizeof(int)))) {
+		errno = ENOMEM;
+		return -1;
+	}
+	
+	*((int*)*data) = Z_DEFAULT_COMPRESSION;
+	
 	return 0;
+}
+
+static int hostprog_lib_zlib_compress_usage(FILE* const dest)
+{
+	fprintf(dest,
+		" compression=<str>    select compression level (default, size, speed, none)\n"
+	);
+	return 0;
+}
+
+static int hostprog_lib_zlib_compress_option(void* data,
+	const char* name, const char* value)
+{
+	int* compression = data;
+	
+	if (strcmp(name, "compression") == 0) {
+		if (!value) {
+			goto err_args;
+		} else if (strcmp(value, "default") == 0) {
+			*compression = Z_DEFAULT_COMPRESSION;
+		} else if (strcmp(value, "size") == 0) {
+			*compression = Z_BEST_COMPRESSION;
+		} else if (strcmp(value, "speed") == 0) {
+			*compression = Z_BEST_SPEED;
+		} else if (strcmp(value, "none") == 0) {
+			*compression = Z_NO_COMPRESSION;
+		} else {
+			goto err_args;
+		}
+		return 0;
+	}
+err_args:
+	errno = EINVAL;
+	return -1;
 }
 
 static int hostprog_lib_zlib_compress(void* data, void* destbuf, __u32* destbufsz,
 	void* srcbuf, __u32 srcbufsz, int* implerr)
 {
-	(void)data;
-	
-	*implerr = compress((Bytef*)destbuf, (uLongf*)destbufsz,
-		(Bytef*)srcbuf, (uLongf)srcbufsz);
+	*implerr = compress2((Bytef*)destbuf, (uLongf*)destbufsz,
+		(Bytef*)srcbuf, (uLongf)srcbufsz, *(int*)data);
 	return *implerr == Z_OK? 0: -1;
 }
 
@@ -76,6 +119,8 @@ const struct hostprog_lib hostprog_lib_zlib = {
 	.hl_info = &libinfo_zlib,
 	.hl_compiled = 1,
 	.hl_init = hostprog_lib_zlib_init,
+	.hl_compress_usage = hostprog_lib_zlib_compress_usage,
+	.hl_compress_option = hostprog_lib_zlib_compress_option,
 	.hl_compress = hostprog_lib_zlib_compress,
 	.hl_decompress = hostprog_lib_zlib_decompress,
 	.hl_upperbound = hostprog_lib_zlib_upperbound,

@@ -24,6 +24,7 @@
 
 #ifdef HOSTPROGS_LIB_LZO
 
+#include <errno.h>
 #include <stdlib.h>
 
 #include <lzo/lzoconf.h>
@@ -32,8 +33,12 @@
 static int hostprog_lib_lzo_init(void** data, __u32 blksz)
 {
 	(void)blksz;
-	*data = malloc(LZO1X_999_MEM_COMPRESS);
-	return *data? 0: -1;
+	
+	if (!(*data = malloc(LZO1X_999_MEM_COMPRESS))) {
+		errno = ENOMEM;
+		return -1;
+	}
+	return 0;
 }
 
 static int hostprog_lib_lzo_compress(void* data, void* destbuf, __u32* destbufsz,
@@ -78,6 +83,8 @@ const struct hostprog_lib hostprog_lib_lzo = {
 	.hl_info = &libinfo_lzo,
 	.hl_compiled = 1,
 	.hl_init = hostprog_lib_lzo_init,
+	.hl_compress_usage = hostprog_lib_compress_usage,
+	.hl_compress_option = hostprog_lib_compress_option,
 	.hl_compress = hostprog_lib_lzo_compress,
 	.hl_decompress = hostprog_lib_lzo_decompress,
 	.hl_upperbound = hostprog_lib_lzo_upperbound,

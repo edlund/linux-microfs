@@ -27,7 +27,7 @@
 
 /* getopt() args, see usage().
  */
-#define MKI_OPTIONS "hvepqsZSb:u:n:c:D:"
+#define MKI_OPTIONS "hvepqsZSb:u:n:c:D:l:"
 
 /* Simple representation of an inode/dentry.
  */
@@ -125,6 +125,8 @@ struct imgspec {
 	const struct hostprog_lib* sp_lib;
 	/* Private data for the compression library. */
 	void* sp_lib_data;
+	/* Library cmd line options. */
+	char* sp_lib_options;
 };
 
 /* Set the uid or gid for the given entry and check for
@@ -832,12 +834,41 @@ static void usage(const char* const exe, FILE* const dest,
 		" -n <str>    give the image a name\n"
 		" -c <str>    compression library to use (default=zlib)\n"
 		" -D <str>    use the given file as a device table\n"
+		" -l <str>    pass options to the compression library\n"
 		" dirname     root of the directory tree to be compressed\n"
 		" outfile     image output file\n"
+		"\nCompression options (-l) are given as:\n"
+		" -l param_name0=value0,param_name1,param_name2=value2,...\n"
 		"\n", exe, MKI_OPTIONS, exe, MICROFS_PADDING,
 		MICROFS_MINBLKSZ, MICROFS_MAXBLKSZ, spec->sp_pagesz);
 	
+	for (const struct hostprog_lib** libs = hostprog_lib_all();
+			(*libs)->hl_info; libs++) {
+		if ((*libs)->hl_compiled) {
+			fprintf(dest, "-- %s options\n\n", (*libs)->hl_info->li_name);
+			(*libs)->hl_compress_usage(dest);
+			fprintf(dest, "\n");
+		}
+	}
+	
 	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
+}
+
+static void lib_options(struct imgspec* spec)
+{
+	if (spec->sp_lib_options) {
+		char* options = spec->sp_lib_options;
+		char* token;
+		char* value;
+		while ((token = strsep(&options, ","))) {
+			if ((value = strchr(token, '=')))
+				*value++ = '\0';
+			if (spec->sp_lib->hl_compress_option(spec->sp_lib_data,
+					token, value) < 0) {
+				error("failed to parse library option: %s", strerror(errno));
+			}
+		}
+	}
 }
 
 static struct imgspec* create_imgspec(int argc, char* argv[])
@@ -929,6 +960,9 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 			case 'D':
 				spec->sp_devtable = optarg;
 				break;
+			case 'l':
+				spec->sp_lib_options = optarg;
+				break;
 			default:
 				/* Ignore it.
 				 */
@@ -968,6 +1002,8 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 		error("%s support has not been compiled", spec->sp_lib->hl_info->li_name);
 	if (spec->sp_lib->hl_init(&spec->sp_lib_data, spec->sp_blksz) < 0)
 		error("failed to init %s", spec->sp_lib->hl_info->li_name);
+	
+	lib_options(spec);
 	
 	if (spec->sp_lib->hl_info->li_min_blksz == 0 && spec->sp_blksz < spec->sp_pagesz) {
 		warning("block size smaller than page size of host"

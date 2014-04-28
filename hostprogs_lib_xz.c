@@ -24,6 +24,7 @@
 
 #ifdef HOSTPROGS_LIB_XZ
 
+#include <errno.h>
 #include <stdlib.h>
 
 #include <lzma.h>
@@ -84,6 +85,7 @@ static int hostprog_lib_xz_decompress(void* data, void* destbuf, __u32* destbufs
 static __u32 hostprog_lib_xz_upperbound(void* data, __u32 size)
 {
 	(void)data;
+	
 	return lzma_stream_buffer_bound(size);
 }
 
@@ -118,6 +120,8 @@ const struct hostprog_lib hostprog_lib_xz = {
 	.hl_info = &libinfo_xz,
 	.hl_compiled = 1,
 	.hl_init = hostprog_lib_xz_init,
+	.hl_compress_usage = hostprog_lib_compress_usage,
+	.hl_compress_option = hostprog_lib_compress_option,
 	.hl_compress = hostprog_lib_xz_compress,
 	.hl_decompress = hostprog_lib_xz_decompress,
 	.hl_upperbound = hostprog_lib_xz_upperbound,

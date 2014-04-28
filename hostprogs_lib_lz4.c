@@ -24,23 +24,74 @@
 
 #ifdef HOSTPROGS_LIB_LZ4
 
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <lz4.h>
+#include <lz4hc.h>
+
+typedef int (*hostprog_lib_lz4_compressor)(const char* source, char* dest,
+	int inputSize, int maxOutputSize);
+
+struct hostprog_lib_lz4_opts {
+	hostprog_lib_lz4_compressor opt_compressor;
+};
 
 static int hostprog_lib_lz4_init(void** data, __u32 blksz)
 {
-	(void)data;
+	struct hostprog_lib_lz4_opts* opts;
+	
 	(void)blksz;
+	
+	if (!(*data = opts = malloc(sizeof(*opts)))) {
+		errno = ENOMEM;
+		return -1;
+	}
+	
+	opts->opt_compressor = LZ4_compress_limitedOutput;
 	
 	return 0;
 }
 
+
+static int hostprog_lib_lz4_compress_usage(FILE* const dest)
+{
+	fprintf(dest,
+		" compression=<str>    select compression level (default, high)\n"
+	);
+	return 0;
+}
+
+static int hostprog_lib_lz4_compress_option(void* data,
+	const char* name, const char* value)
+{
+	struct hostprog_lib_lz4_opts* opts = data;
+	
+	if (strcmp(name, "compression") == 0) {
+		if (!value) {
+			goto err_args;
+		} else if (strcmp(value, "default") == 0) {
+			opts->opt_compressor = LZ4_compress_limitedOutput;
+		} else if (strcmp(value, "high") == 0) {
+			opts->opt_compressor = LZ4_compressHC_limitedOutput;
+		} else {
+			goto err_args;
+		}
+		return 0;
+	}
+err_args:
+	errno = EINVAL;
+	return -1;
+}
+
+
 static int hostprog_lib_lz4_compress(void* data, void* destbuf, __u32* destbufsz,
 	void* srcbuf, __u32 srcbufsz, int* implerr)
 {
-	(void)data;
+	struct hostprog_lib_lz4_opts* opts = data;
 	
-	*implerr = LZ4_compress_limitedOutput(srcbuf, destbuf,
-		srcbufsz, *destbufsz);
+	*implerr = opts->opt_compressor(srcbuf, destbuf, srcbufsz, *destbufsz);
 	*destbufsz = *implerr? *implerr: 0;
 	return *implerr != 0? 0: -1;
 }
@@ -74,6 +125,8 @@ const struct hostprog_lib hostprog_lib_lz4 = {
 	.hl_info = &libinfo_lz4,
 	.hl_compiled = 1,
 	.hl_init = hostprog_lib_lz4_init,
+	.hl_compress_usage = hostprog_lib_lz4_compress_usage,
+	.hl_compress_option = hostprog_lib_lz4_compress_option,
 	.hl_compress = hostprog_lib_lz4_compress,
 	.hl_decompress = hostprog_lib_lz4_decompress,
 	.hl_upperbound = hostprog_lib_lz4_upperbound,

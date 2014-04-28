@@ -19,6 +19,8 @@
 #ifndef HOSTPROGS_LIB_H
 #define HOSTPROGS_LIB_H
 
+#include <stdio.h>
+
 #include <linux/types.h>
 
 #include "libinfo.h"
@@ -30,6 +32,10 @@ struct hostprog_lib {
 	const int hl_compiled;
 	/* Compression library initialization, if necessary. */
 	int (*hl_init)(void** data, __u32 blksz);
+	/* Compression library option. */
+	int (*hl_compress_option)(void* data, const char* name, const char* value);
+	/* Compression library help. */
+	int (*hl_compress_usage)(FILE* const dest);
 	/* Compress data. */
 	int (*hl_compress)(void* data, void* destbuf, __u32* destbufsz,
 		void* srcbuf, __u32 srcbufsz, int* implerr);
@@ -51,6 +57,9 @@ const struct hostprog_lib* hostprog_lib_find_byid(const int id);
 const struct hostprog_lib* hostprog_lib_find_byname(const char* name);
 
 const struct hostprog_lib** hostprog_lib_all(void);
+
+int hostprog_lib_compress_usage(FILE* const dest);
+int hostprog_lib_compress_option(void* data, const char* name, const char* value);
 
 __u32 hostprog_lib_zlib_crc32(char* data, __u64 sz);
 
