@@ -887,10 +887,8 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	spec->sp_shareblocks = 1;
 	spec->sp_lib = &hostprog_lib_zlib;
 	
-	/* The page size of the host is a good default block size.
-	 */
 	spec->sp_pagesz = sysconf(_SC_PAGESIZE);
-	spec->sp_blksz = spec->sp_pagesz;
+	spec->sp_blksz = MICROFS_DEFAULBLKSZ;
 	spec->sp_szpad = spec->sp_pagesz;
 	
 	if (argc < 2)
