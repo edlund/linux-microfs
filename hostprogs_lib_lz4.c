@@ -34,22 +34,22 @@
 typedef int (*hostprog_lib_lz4_compressor)(const char* source, char* dest,
 	int inputSize, int maxOutputSize);
 
-struct hostprog_lib_lz4_opts {
-	hostprog_lib_lz4_compressor opt_compressor;
+struct hostprog_lib_lz4_data {
+	hostprog_lib_lz4_compressor d_compressor;
 };
 
 static int hostprog_lib_lz4_init(void** data, __u32 blksz)
 {
-	struct hostprog_lib_lz4_opts* opts;
+	struct hostprog_lib_lz4_data* lz4_data;
 	
 	(void)blksz;
 	
-	if (!(*data = opts = malloc(sizeof(*opts)))) {
+	if (!(*data = lz4_data = malloc(sizeof(*lz4_data)))) {
 		errno = ENOMEM;
 		return -1;
 	}
 	
-	opts->opt_compressor = LZ4_compress_limitedOutput;
+	lz4_data->d_compressor = LZ4_compress_limitedOutput;
 	
 	return 0;
 }
@@ -58,7 +58,7 @@ static int hostprog_lib_lz4_init(void** data, __u32 blksz)
 static int hostprog_lib_lz4_compress_usage(FILE* const dest)
 {
 	fprintf(dest,
-		" compression=<str>    select compression level (default, high)\n"
+		" compression=<str>     select compression level (default, high)\n"
 	);
 	return 0;
 }
@@ -66,15 +66,15 @@ static int hostprog_lib_lz4_compress_usage(FILE* const dest)
 static int hostprog_lib_lz4_compress_option(void* data,
 	const char* name, const char* value)
 {
-	struct hostprog_lib_lz4_opts* opts = data;
+	struct hostprog_lib_lz4_data* lz4_data = data;
 	
 	if (strcmp(name, "compression") == 0) {
 		if (!value) {
 			goto err_args;
 		} else if (strcmp(value, "default") == 0) {
-			opts->opt_compressor = LZ4_compress_limitedOutput;
+			lz4_data->d_compressor = LZ4_compress_limitedOutput;
 		} else if (strcmp(value, "high") == 0) {
-			opts->opt_compressor = LZ4_compressHC_limitedOutput;
+			lz4_data->d_compressor = LZ4_compressHC_limitedOutput;
 		} else {
 			goto err_args;
 		}
@@ -89,9 +89,9 @@ err_args:
 static int hostprog_lib_lz4_compress(void* data, void* destbuf, __u32* destbufsz,
 	void* srcbuf, __u32 srcbufsz, int* implerr)
 {
-	struct hostprog_lib_lz4_opts* opts = data;
+	struct hostprog_lib_lz4_data* opts = data;
 	
-	*implerr = opts->opt_compressor(srcbuf, destbuf, srcbufsz, *destbufsz);
+	*implerr = opts->d_compressor(srcbuf, destbuf, srcbufsz, *destbufsz);
 	*destbufsz = *implerr? *implerr: 0;
 	return *implerr != 0? 0: -1;
 }

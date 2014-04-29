@@ -52,7 +52,7 @@ static int hostprog_lib_zlib_init(void** data, __u32 blksz)
 static int hostprog_lib_zlib_compress_usage(FILE* const dest)
 {
 	fprintf(dest,
-		" compression=<str>    select compression level (default, size, speed, none)\n"
+		" compression=<str>     select compression level (default, size, speed, none)\n"
 	);
 	return 0;
 }

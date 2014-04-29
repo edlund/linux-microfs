@@ -21,7 +21,7 @@
 #endif
 #define __LIBINFO_XZ_H__
 
-#define LIBINFO_XZ_DICTSZ (1 << 15)
+#define LIBINFO_XZ_DICTSZ MICROFS_MAXBLKSZ
 
 static const struct libinfo libinfo_xz = {
 	.li_id = MICROFS_FLAG_DECOMPRESSOR_XZ,

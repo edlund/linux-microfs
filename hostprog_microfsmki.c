@@ -865,7 +865,8 @@ static void lib_options(struct imgspec* spec)
 				*value++ = '\0';
 			if (spec->sp_lib->hl_compress_option(spec->sp_lib_data,
 					token, value) < 0) {
-				error("failed to parse library option: %s", strerror(errno));
+				error("failed to handle library option %s=%s: %s",
+					token, value, strerror(errno));
 			}
 		}
 	}
