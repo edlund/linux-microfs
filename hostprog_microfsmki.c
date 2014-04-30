@@ -846,7 +846,7 @@ static void usage(const char* const exe, FILE* const dest,
 			(*libs)->hl_info; libs++) {
 		if ((*libs)->hl_compiled) {
 			fprintf(dest, "-- %s options\n\n", (*libs)->hl_info->li_name);
-			(*libs)->hl_compress_usage(dest);
+			(*libs)->hl_mk_usage(dest);
 			fprintf(dest, "\n");
 		}
 	}
@@ -863,7 +863,7 @@ static void lib_options(struct imgspec* spec)
 		while ((token = strsep(&options, ","))) {
 			if ((value = strchr(token, '=')))
 				*value++ = '\0';
-			if (spec->sp_lib->hl_compress_option(spec->sp_lib_data,
+			if (spec->sp_lib->hl_mk_option(spec->sp_lib_data,
 					token, value) < 0) {
 				error("failed to handle library option %s=%s: %s",
 					token, value, strerror(errno));

@@ -91,7 +91,7 @@ static int hostprog_lib_xz_init(void** data, __u32 blksz)
 	return 0;
 }
 
-static int hostprog_lib_xz_compress_usage(FILE* const dest)
+static int hostprog_lib_xz_mk_usage(FILE* const dest)
 {
 	fprintf(dest,
 		" filter=<str>          add a BCJ conversion filter"
@@ -100,7 +100,7 @@ static int hostprog_lib_xz_compress_usage(FILE* const dest)
 	return 0;
 }
 
-static int hostprog_lib_xz_compress_option(void* data,
+static int hostprog_lib_xz_mk_option(void* data,
 	const char* name, const char* value)
 {
 	struct hostprog_lib_xz_data* xz_data = data;
@@ -148,9 +148,12 @@ static int hostprog_lib_xz_compress_option(void* data,
 			errno = ENOMEM;
 			goto err;
 		}
+		return 0;
 	}
-	return 0;
 	
+	/* It is possible to get here for unknown option names.
+	 */
+	errno = EINVAL;
 err:
 	return -1;
 }
@@ -244,8 +247,8 @@ const struct hostprog_lib hostprog_lib_xz = {
 	.hl_info = &libinfo_xz,
 	.hl_compiled = 1,
 	.hl_init = hostprog_lib_xz_init,
-	.hl_compress_usage = hostprog_lib_xz_compress_usage,
-	.hl_compress_option = hostprog_lib_xz_compress_option,
+	.hl_mk_usage = hostprog_lib_xz_mk_usage,
+	.hl_mk_option = hostprog_lib_xz_mk_option,
 	.hl_compress = hostprog_lib_xz_compress,
 	.hl_decompress = hostprog_lib_xz_decompress,
 	.hl_upperbound = hostprog_lib_xz_upperbound,

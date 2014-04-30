@@ -49,7 +49,7 @@ static int hostprog_lib_zlib_init(void** data, __u32 blksz)
 	return 0;
 }
 
-static int hostprog_lib_zlib_compress_usage(FILE* const dest)
+static int hostprog_lib_zlib_mk_usage(FILE* const dest)
 {
 	fprintf(dest,
 		" compression=<str>     select compression level (default, size, speed, none)\n"
@@ -57,7 +57,7 @@ static int hostprog_lib_zlib_compress_usage(FILE* const dest)
 	return 0;
 }
 
-static int hostprog_lib_zlib_compress_option(void* data,
+static int hostprog_lib_zlib_mk_option(void* data,
 	const char* name, const char* value)
 {
 	int* compression = data;
@@ -119,8 +119,8 @@ const struct hostprog_lib hostprog_lib_zlib = {
 	.hl_info = &libinfo_zlib,
 	.hl_compiled = 1,
 	.hl_init = hostprog_lib_zlib_init,
-	.hl_compress_usage = hostprog_lib_zlib_compress_usage,
-	.hl_compress_option = hostprog_lib_zlib_compress_option,
+	.hl_mk_usage = hostprog_lib_zlib_mk_usage,
+	.hl_mk_option = hostprog_lib_zlib_mk_option,
 	.hl_compress = hostprog_lib_zlib_compress,
 	.hl_decompress = hostprog_lib_zlib_decompress,
 	.hl_upperbound = hostprog_lib_zlib_upperbound,

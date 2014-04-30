@@ -65,13 +65,13 @@ const struct hostprog_lib** hostprog_lib_all(void)
 	return hostprog_libs;
 }
 
-int hostprog_lib_compress_usage(FILE* const dest)
+int hostprog_lib_mk_usage(FILE* const dest)
 {
 	fprintf(dest, " no options available\n");
 	return 0;
 }
 
-int hostprog_lib_compress_option(void* data, const char* name, const char* value)
+int hostprog_lib_mk_option(void* data, const char* name, const char* value)
 {
 	(void)data;
 	(void)name;

@@ -55,7 +55,7 @@ static int hostprog_lib_lz4_init(void** data, __u32 blksz)
 }
 
 
-static int hostprog_lib_lz4_compress_usage(FILE* const dest)
+static int hostprog_lib_lz4_mk_usage(FILE* const dest)
 {
 	fprintf(dest,
 		" compression=<str>     select compression level (default, high)\n"
@@ -63,7 +63,7 @@ static int hostprog_lib_lz4_compress_usage(FILE* const dest)
 	return 0;
 }
 
-static int hostprog_lib_lz4_compress_option(void* data,
+static int hostprog_lib_lz4_mk_option(void* data,
 	const char* name, const char* value)
 {
 	struct hostprog_lib_lz4_data* lz4_data = data;
@@ -125,8 +125,8 @@ const struct hostprog_lib hostprog_lib_lz4 = {
 	.hl_info = &libinfo_lz4,
 	.hl_compiled = 1,
 	.hl_init = hostprog_lib_lz4_init,
-	.hl_compress_usage = hostprog_lib_lz4_compress_usage,
-	.hl_compress_option = hostprog_lib_lz4_compress_option,
+	.hl_mk_usage = hostprog_lib_lz4_mk_usage,
+	.hl_mk_option = hostprog_lib_lz4_mk_option,
 	.hl_compress = hostprog_lib_lz4_compress,
 	.hl_decompress = hostprog_lib_lz4_decompress,
 	.hl_upperbound = hostprog_lib_lz4_upperbound,
