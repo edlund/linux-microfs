@@ -506,7 +506,6 @@ Result:
 
  * The devtable support seems to be quite buggy when tested
    on real machines (non-virtual).
- * Update the benchmark tools.
 
 ## Ideas for possible future development
 
