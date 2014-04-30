@@ -32,7 +32,7 @@
 static dev_t makedev_lim(int dev_major, int dev_minor, int bits)
 {
 	dev_t dev = makedev(dev_major, dev_minor);
-	if (dev & -(1 << bits)) {
+	if (dev & ~((1ULL << bits) - 1)) {
 		error("device number (major=%du, minor=%du) truncated to %d bits"
 			" - this most likely very wrong", dev_major, dev_minor, bits);
 	}

@@ -75,7 +75,7 @@ static void usage(const char* const exe)
 {
 	fprintf(stderr, "\nUsage: %s devbits devtable rootdir"
 		" [dir1, dir2, ... dirN]\n"
-		"\nexample: %s 24 devtable.txt / /dev\n\n"
+		"\nexample: %s 32 devtable.txt / /dev\n"
 		"\n", exe, exe);
 	exit(EXIT_FAILURE);
 }

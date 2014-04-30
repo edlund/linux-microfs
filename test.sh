@@ -209,6 +209,7 @@ devtable_mount() {
 	local mk_cmd="$1"
 	echo "$0: running device table mk command: \"${mk_cmd}\""
 	eval "${mk_cmd}"
+	test $? -ne 0 && exit 1
 	local test_options="$2"
 	local test_cmd="${script_dir}/tools/devtabletests.sh ${test_options}"
 	echo "$0: running device table test command: \"${test_cmd}\""
