@@ -131,16 +131,14 @@ struct microfs_sb {
 	struct microfs_inode s_root;
 } __attribute__ ((packed));
 
-/* Get the actual size stored in the %i_size*-fields of the
- * given inode.
+/* Get the actual size of the given inode.
  */
 static inline __u32 i_getsize(const struct microfs_inode* const ino)
 {
 	return __le32_to_cpu(ino->i_size);
 }
 
-/* Store the given size in the %i_size*-fields of the given
- * inode. Pretty much only used by `microfsmki`.
+/* Store the given size for the given inode.
  */
 static inline void i_setsize(struct microfs_inode* const ino, const __u32 size)
 {
