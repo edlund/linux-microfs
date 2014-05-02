@@ -24,5 +24,13 @@
 
 #include <linux/version.h>
 
+#ifdef __cplusplus
+#define __MICROFS_BEGIN_EXTERN_C extern "C" {
+#define __MICROFS_END_EXTERN_C }
+#else
+#define __MICROFS_BEGIN_EXTERN_C
+#define __MICROFS_END_EXTERN_C
+#endif
+
 #endif
 

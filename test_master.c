@@ -34,6 +34,8 @@ END_TEST
 START_TEST(test_packed_structs)
 	_ck_assert_int(sizeof(struct microfs_inode), ==, 15);
 	_ck_assert_int(sizeof(struct microfs_sb), ==, 77);
+	
+	_ck_assert_int(sizeof(struct microfs_dd_xz), ==, 8);
 END_TEST
 
 START_TEST(test_i_xsize)

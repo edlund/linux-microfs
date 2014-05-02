@@ -19,26 +19,14 @@
 #ifndef __MICROFS_H__
 #define __MICROFS_H__
 
-#ifdef __cplusplus
-#define __MICROFS_BEGIN_EXTERN_C extern "C" {
-#define __MICROFS_END_EXTERN_C }
-#else
-#define __MICROFS_BEGIN_EXTERN_C
-#define __MICROFS_END_EXTERN_C
-#endif
-
-__MICROFS_BEGIN_EXTERN_C
-
 #ifdef __KERNEL__
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #endif
 
-#include <asm/byteorder.h>
-#include <linux/fs.h>
-#include <linux/types.h>
+#include "microfs_compat.h"
+#include "microfs_fs.h"
 
-#include "microfs_constants.h"
-#include "microfs_flags.h"
+__MICROFS_BEGIN_EXTERN_C
 
 #ifdef __KERNEL__
 
@@ -73,76 +61,6 @@ __MICROFS_BEGIN_EXTERN_C
 static inline int microfs_ispow2(const __u64 n)
 {
 	return __MICROFS_ISPOW2(n);
-}
-
-/* "On-disk" inode.
- * 
- * Compared to cramfs_inode this representation is slightly
- * more verbose. It comes with four benefits:
- * 
- * #1: GIDs are not truncated.
- * #2: Images can be much larger (2^32 bytes).
- * #3: File names can be slightly longer.
- * #4: Files can be much larger (2^32 - 1 bytes).
- * 
- * (Disclaimer: #2, #3 and #4 might not be _that_ useful.)
- */
-struct microfs_inode {
-	/* File mode. */
-	__le16 i_mode;
-	/* Low 16 bits of User ID. */
-	__le16 i_uid;
-	/* Low 16 bits of Group ID. */
-	__le16 i_gid;
-	/* File size. */
-	__le32 i_size;
-	/* Filename length. */
-	__u8 i_namelen;
-	/* Offset for the block pointers. */
-	__le32 i_offset;
-} __attribute__ ((packed));
-
-/* "On-disk" superblock.
- */
-struct microfs_sb {
-	/* MICROFS_MAGIC. */
-	__le32 s_magic;
-	/* Image size. */
-	__le32 s_size;
-	/* Feature flags. */
-	__le32 s_flags;
-	/* Image CRC checksum. */
-	__le32 s_crc;
-	/* Number of blocks. */
-	__le32 s_blocks;
-	/* Number of files. */
-	__le16 s_files;
-	/* Image creation time. */
-	__le32 s_ctime;
-	/* Block size left shift. */
-	__le16 s_blkshift;
-	/* Reserved. */
-	 __le16 s_future;
-	/* MICROFS_SIGNATURE. */
-	__u8 s_signature[MICROFS_SBSIGNATURE_LENGTH];
-	/* User defined image name. */
-	__u8 s_name[MICROFS_SBNAME_LENGTH];
-	/* Root inode. */
-	struct microfs_inode s_root;
-} __attribute__ ((packed));
-
-/* Get the actual size of the given inode.
- */
-static inline __u32 i_getsize(const struct microfs_inode* const ino)
-{
-	return __le32_to_cpu(ino->i_size);
-}
-
-/* Store the given size for the given inode.
- */
-static inline void i_setsize(struct microfs_inode* const ino, const __u32 size)
-{
-	ino->i_size = __cpu_to_le32(size);
 }
 
 /* Get the number of blocks required for a file of %size
@@ -337,13 +255,6 @@ int decompressor_lz_end(struct microfs_sb_info* sbi,
 #endif
 
 #endif
-
-/* Determine if %sb->s_flags specifies unknown flags.
- */
-static inline int sb_unsupportedflags(const struct microfs_sb* const sb)
-{
-	return __le32_to_cpu(sb->s_flags) & ~(MICROFS_SUPPORTED_FLAGS);
-}
 
 __MICROFS_END_EXTERN_C
 

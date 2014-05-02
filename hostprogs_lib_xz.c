@@ -17,8 +17,7 @@
  */
 
 #include "hostprogs_lib.h"
-#include "microfs_constants.h"
-#include "microfs_flags.h"
+#include "microfs_fs.h"
 
 #include "libinfo_xz.h"
 
