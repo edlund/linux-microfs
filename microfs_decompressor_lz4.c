@@ -24,8 +24,9 @@
 
 #include <linux/lz4.h>
 
-int decompressor_lz4_create(struct microfs_sb_info* sbi)
+int decompressor_lz4_create(struct microfs_sb_info* sbi, char* dd)
 {
+	(void)dd;
 	return decompressor_lz_create(sbi, lz4_compressbound(sbi->si_blksz));
 }
 

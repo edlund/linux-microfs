@@ -147,7 +147,8 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 	struct microfs_sb* msb = NULL;
 	struct microfs_sb_info* sbi = NULL;
 	
-	__u32 sb_root_offset = 0;
+	__u32 sb_actual_root_offset;
+	__u32 sb_expected_root_offset;
 	__u32 sb_padding = 0;
 	
 	__u64 sb_blksz = 0;
@@ -257,15 +258,6 @@ sb_retry:
 		goto err_sb;
 	}
 	
-	sb_root_offset = __le32_to_cpu(msb->s_root.i_offset);
-	if (sb_root_offset == 0) {
-		pr_info("this image is empty\n");
-	} else if (sb_root_offset != sb_padding + sizeof(struct microfs_sb)) {
-		pr_err("bad root offset: 0x%x\n", sb_root_offset);
-		err = -EINVAL;
-		goto err_sb;
-	}
-	
 	sbi->si_size = __le32_to_cpu(msb->s_size);
 	sbi->si_flags = __le32_to_cpu(msb->s_flags);
 	sbi->si_blocks = __le32_to_cpu(msb->s_blocks);
@@ -313,11 +305,23 @@ sb_retry:
 			mount_opts.mo_metadata_dentrybufsz, "sbi->si_metadata_dentrybuf")) < 0)
 		goto err_metadata_dentrybuf;
 	
-	
-	err = microfs_decompressor_init(sbi);
+	err = microfs_decompressor_init(sbi, bh->b_data + sb_padding + sizeof(*msb));
 	if (err < 0) {
 		pr_err("failed to init the decompressor\n");
 		goto err_decompressor_init;
+	}
+	
+	sb_actual_root_offset = __le32_to_cpu(msb->s_root.i_offset);
+	sb_expected_root_offset = sb_padding + sizeof(*msb)
+		+ sbi->si_decompressor->dc_info->li_dd_sz;
+	
+	if (sb_actual_root_offset == 0) {
+		pr_info("this image is empty\n");
+	} else if (sb_actual_root_offset != sb_expected_root_offset) {
+		pr_err("bad root offset: 0x%x, expected 0x%x\n",
+			sb_actual_root_offset, sb_expected_root_offset);
+		err = -EINVAL;
+		goto err_root_offset;
 	}
 	
 	msb = NULL;
@@ -328,6 +332,8 @@ sb_retry:
 	
 	return 0;
 	
+err_root_offset:
+	/* Fall-through. */
 err_decompressor_init:
 	/* Fall-through. */
 err_metadata_dentrybuf:

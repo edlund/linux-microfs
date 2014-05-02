@@ -65,10 +65,9 @@ const struct hostprog_lib** hostprog_lib_all(void)
 	return hostprog_libs;
 }
 
-int hostprog_lib_mk_usage(FILE* const dest)
+void hostprog_lib_mk_usage(FILE* const dest)
 {
 	fprintf(dest, " no options available\n");
-	return 0;
 }
 
 int hostprog_lib_mk_option(void* data, const char* name, const char* value)
@@ -76,6 +75,20 @@ int hostprog_lib_mk_option(void* data, const char* name, const char* value)
 	(void)data;
 	(void)name;
 	(void)value;
+	return 0;
+}
+
+__u64 hostprog_lib_mk_dd(void* data, char* base, __u64 offset)
+{
+	(void)data;
+	(void)base;
+	return offset;
+}
+
+int hostprog_lib_ck_dd(void* data, char* dd)
+{
+	(void)data;
+	(void)dd;
 	return 0;
 }
 

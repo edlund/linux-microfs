@@ -23,11 +23,17 @@
 
 #define LIBINFO_XZ_DICTSZ MICROFS_MAXBLKSZ
 
+struct microfs_dd_xz {
+	__le32 dd_magic;
+	__le32 dd_dictsz;
+}  __attribute__ ((packed));
+
 static const struct libinfo libinfo_xz = {
 	.li_id = MICROFS_FLAG_DECOMPRESSOR_XZ,
 	.li_streaming = 1,
 	.li_min_blksz = MICROFS_MINBLKSZ,
 	.li_max_blksz = MICROFS_MAXBLKSZ,
+	.li_dd_sz = sizeof(struct microfs_dd_xz),
 	.li_name = "xz"
 };
 

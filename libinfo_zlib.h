@@ -26,6 +26,7 @@ static const struct libinfo libinfo_zlib = {
 	.li_streaming = 1,
 	.li_min_blksz = MICROFS_MINBLKSZ,
 	.li_max_blksz = MICROFS_MAXBLKSZ,
+	.li_dd_sz = 0,
 	.li_name = "zlib"
 };
 

@@ -36,7 +36,7 @@ struct inode* microfs_get_inode(struct super_block* sb,
 	if (!vinode)
 		return ERR_PTR(-ENOMEM);
 	
-	pr_devel("vfs inode allocated for ino %lu for super block 0x%p\n",
+	pr_spam("vfs inode allocated for ino %lu for super block 0x%p\n",
 		vinode->i_ino, sb);
 	
 	if (!(vinode->i_state & I_NEW))
@@ -64,7 +64,6 @@ struct inode* microfs_get_inode(struct super_block* sb,
 	i_uid_write(vinode, __le16_to_cpu(minode->i_uid));
 	i_gid_write(vinode, __le16_to_cpu(minode->i_gid));
 	
-	/* minode->i_sizel || minode->i_sizeh */
 	if (minode->i_offset) {
 		const __u32 size = i_getsize(minode);
 		vinode->i_size = size;

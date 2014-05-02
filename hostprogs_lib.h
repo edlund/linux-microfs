@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 
+#include <asm/byteorder.h>
 #include <linux/types.h>
 
 #include "libinfo.h"
@@ -33,9 +34,13 @@ struct hostprog_lib {
 	/* Compression library initialization, if necessary. */
 	int (*hl_init)(void** data, __u32 blksz);
 	/* Compression library help. */
-	int (*hl_mk_usage)(FILE* const dest);
+	void (*hl_mk_usage)(FILE* const dest);
 	/* Compression library option. */
 	int (*hl_mk_option)(void* data, const char* name, const char* value);
+	/* Write "on-disk" decompressor data. */
+	__u64 (*hl_mk_dd)(void* data, char* base, __u64 offset);
+	/* Check "on-disk" decompressor data. */
+	int (*hl_ck_dd)(void* data, char* dd);
 	/* Compress data. */
 	int (*hl_compress)(void* data, void* destbuf, __u32* destbufsz,
 		void* srcbuf, __u32 srcbufsz, int* implerr);
@@ -58,8 +63,10 @@ const struct hostprog_lib* hostprog_lib_find_byname(const char* name);
 
 const struct hostprog_lib** hostprog_lib_all(void);
 
-int hostprog_lib_mk_usage(FILE* const dest);
+void hostprog_lib_mk_usage(FILE* const dest);
 int hostprog_lib_mk_option(void* data, const char* name, const char* value);
+__u64 hostprog_lib_mk_dd(void* data, char* base, __u64 offset);
+int hostprog_lib_ck_dd(void* data, char* base);
 
 __u32 hostprog_lib_zlib_crc32(char* data, __u64 sz);
 

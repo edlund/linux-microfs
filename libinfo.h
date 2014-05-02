@@ -28,6 +28,7 @@ struct libinfo {
 	const int li_streaming;
 	const __u32 li_min_blksz;
 	const __u32 li_max_blksz;
+	const __u32 li_dd_sz;
 	const char* li_name;
 };
 

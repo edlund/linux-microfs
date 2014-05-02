@@ -73,7 +73,7 @@ has not been tested.
 
 `microfs` images has four main parts:
 
- * `super block`
+ * `super block/decompressor data`
  * `inodes/dentries`
  * `block pointers`
  * `compressed data blocks`
@@ -85,6 +85,12 @@ to. The idea is that this change should allow `microfs` to use
 its buffers more efficiently. The downside is that each regular
 file and symlink requires one extra block pointer with this
 setup.
+
+It is possible that decompressor specific data is stored
+immediately after the super block. This will happen if the
+decompressor needs some extra information that is not
+normally available, one example is the dictionary size for
+the `xz` decompressor.
 
 ## Building microfs
 

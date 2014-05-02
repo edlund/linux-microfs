@@ -371,7 +371,9 @@ static void write_superblock(struct imgspec* const spec, char* base,
 	const __u64 sz)
 {
 	__u64 padding = superblock_offset(spec);
-	__u64 offset = padding + sizeof(struct microfs_sb);
+	__u64 offset = padding + sizeof(struct microfs_sb)
+		+ spec->sp_lib->hl_info->li_dd_sz;
+	
 	struct microfs_sb* sb = (struct microfs_sb*)(base + padding);
 	
 	sb->s_magic = __cpu_to_le32(MICROFS_MAGIC);
@@ -413,6 +415,14 @@ static void write_superblock(struct imgspec* const spec, char* base,
 	sb->s_crc = __cpu_to_le32(crc);
 	
 	message(VERBOSITY_0, "CRC: %x", crc);
+}
+
+/* Write any decompressor specific data.
+ */
+static __u64 write_decompressordata(struct imgspec* const spec,
+	char* base, __u64 offset)
+{
+	return spec->sp_lib->hl_mk_dd(spec->sp_lib_data, base, offset);
 }
 
 /* Write metadata for the given entries, but not their actual
@@ -1004,6 +1014,8 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	
 	lib_options(spec);
 	
+	spec->sp_upperbound += spec->sp_lib->hl_info->li_dd_sz;
+	
 	if (spec->sp_lib->hl_info->li_min_blksz == 0 && spec->sp_blksz < spec->sp_pagesz) {
 		warning("block size smaller than page size of host"
 			" - the resulting image can not be used on this host");
@@ -1108,6 +1120,7 @@ static void materialize_imgspec(struct imgspec* const spec)
 	
 	__u64 offset = superblock_offset(spec) + sizeof(struct microfs_sb);
 	
+	offset = write_decompressordata(spec, image, offset);
 	offset = write_metadata(spec, image, offset);
 	offset = write_data(spec, image, offset);
 	

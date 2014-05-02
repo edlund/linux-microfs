@@ -30,24 +30,38 @@ struct decompressor_xz_data {
 	__u32 xz_totalout;
 };
 
-static int decompressor_xz_create(struct microfs_sb_info* sbi)
+static int decompressor_xz_create(struct microfs_sb_info* sbi, char* dd)
 {
+	int err = 0;
+	struct microfs_dd_xz* dd_xz = (struct microfs_dd_xz*)dd;
 	struct decompressor_xz_data* xzdat = kmalloc(sizeof(*xzdat), GFP_KERNEL);
-	if (!xzdat)
+	if (!xzdat) {
+		err = -ENOMEM;
 		goto err_mem_xzdat;
+	}
 	
-	xzdat->xz_state = xz_dec_init(XZ_PREALLOC, LIBINFO_XZ_DICTSZ);
-	if (!xzdat->xz_state)
+	if (__le32_to_cpu(dd_xz->dd_magic) != MICROFS_DD_XZ_MAGIC) {
+		pr_err("bad xz decompressor data magic\n");
+		err = -EINVAL;
+		goto err_dd_magic;
+	}
+	
+	xzdat->xz_state = xz_dec_init(XZ_PREALLOC, __le32_to_cpu(dd_xz->dd_dictsz));
+	if (!xzdat->xz_state) {
+		err = -ENOMEM;
 		goto err_mem_state;
+	}
 	
 	sbi->si_decompressor_data = xzdat;
 	
 	return 0;
 	
 err_mem_state:
+	/* Fall-through. */
+err_dd_magic:
 	kfree(xzdat);
 err_mem_xzdat:
-	return -ENOMEM;
+	return err;
 }
 
 static int decompressor_xz_destroy(struct microfs_sb_info* sbi)

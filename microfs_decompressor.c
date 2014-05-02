@@ -30,7 +30,7 @@ static const struct microfs_decompressor* decompressors[] = {
 	&decompressor_null
 };
 
-int microfs_decompressor_init(struct microfs_sb_info* sbi)
+int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd)
 {
 	int i;
 	int err = 0;
@@ -63,7 +63,7 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi)
 	}
 	
 	sbi->si_decompressor = decompressors[i];
-	return sbi->si_decompressor->dc_create(sbi);
+	return sbi->si_decompressor->dc_create(sbi, dd);
 	
 err:
 	return err;

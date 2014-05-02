@@ -24,11 +24,13 @@
 
 #include <linux/zlib.h>
 
-static int decompressor_zlib_create(struct microfs_sb_info* sbi)
+static int decompressor_zlib_create(struct microfs_sb_info* sbi, char* dd)
 {
 	struct z_stream_s* zstrm = kmalloc(sizeof(*zstrm), GFP_KERNEL);
 	if (!zstrm)
 		goto err_mem_zstrm;
+	
+	(void)dd;
 	
 	zstrm->workspace = kmalloc(zlib_inflate_workspacesize(), GFP_KERNEL);
 	if (!zstrm->workspace)

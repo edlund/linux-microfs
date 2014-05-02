@@ -91,19 +91,36 @@ static int hostprog_lib_xz_init(void** data, __u32 blksz)
 	return 0;
 }
 
-static int hostprog_lib_xz_mk_usage(FILE* const dest)
+static void hostprog_lib_xz_mk_usage(FILE* const dest)
 {
 	fprintf(dest,
+		" dictionary=<int>      dictionary size (power of two, bigger than %u)\n"
 		" filter=<str>          add a BCJ conversion filter"
 		" (x86, powerpc, ia64, arm, armthumb, sparc)\n"
+		"", LZMA_DICT_SIZE_MIN
 	);
-	return 0;
 }
 
 static int hostprog_lib_xz_mk_option(void* data,
 	const char* name, const char* value)
 {
 	struct hostprog_lib_xz_data* xz_data = data;
+	
+	if (strcmp(name, "dictionary") == 0) {
+		if (!value) {
+			errno = EINVAL;
+			goto err;
+		}
+		
+		char* endptr;
+		xz_data->d_opts.dict_size = strtoul(value, &endptr, 10);
+		if (*endptr != '\0') {
+			errno = EINVAL;
+			goto err;
+		}
+		
+		return 0;
+	}
 	
 	if (strcmp(name, "filter") == 0) {
 		if (!value) {
@@ -148,6 +165,7 @@ static int hostprog_lib_xz_mk_option(void* data,
 			errno = ENOMEM;
 			goto err;
 		}
+		
 		return 0;
 	}
 	
@@ -156,6 +174,32 @@ static int hostprog_lib_xz_mk_option(void* data,
 	errno = EINVAL;
 err:
 	return -1;
+}
+
+static __u64 hostprog_lib_xz_mk_dd(void* data, char* base, __u64 offset)
+{
+	struct microfs_dd_xz* dd_xz = (struct microfs_dd_xz*)(base + offset);
+	struct hostprog_lib_xz_data* xz_data = data;
+	
+	dd_xz->dd_magic = __cpu_to_le32(MICROFS_DD_XZ_MAGIC);
+	dd_xz->dd_dictsz = __cpu_to_le32(xz_data->d_opts.dict_size);
+	
+	return offset + hostprog_lib_xz.hl_info->li_dd_sz;
+}
+
+static int hostprog_lib_xz_ck_dd(void* data, char* dd)
+{
+	int err = -1;
+	struct microfs_dd_xz* dd_xz = (struct microfs_dd_xz*)dd;
+	struct hostprog_lib_xz_data* xz_data = data;
+	
+	if (__le32_to_cpu(dd_xz->dd_magic) == MICROFS_DD_XZ_MAGIC) {
+		xz_data->d_opts.dict_size = __le32_to_cpu(dd_xz->dd_dictsz);
+		if (xz_data->d_opts.dict_size >= LZMA_DICT_SIZE_MIN)
+			err = 0;
+	}
+	
+	return err;
 }
 
 static int hostprog_lib_xz_compress(void* data, void* destbuf, __u32* destbufsz,
@@ -249,6 +293,8 @@ const struct hostprog_lib hostprog_lib_xz = {
 	.hl_init = hostprog_lib_xz_init,
 	.hl_mk_usage = hostprog_lib_xz_mk_usage,
 	.hl_mk_option = hostprog_lib_xz_mk_option,
+	.hl_mk_dd = hostprog_lib_xz_mk_dd,
+	.hl_ck_dd = hostprog_lib_xz_ck_dd,
 	.hl_compress = hostprog_lib_xz_compress,
 	.hl_decompress = hostprog_lib_xz_decompress,
 	.hl_upperbound = hostprog_lib_xz_upperbound,

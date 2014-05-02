@@ -215,7 +215,7 @@ struct microfs_decompressor {
 	/* Decompressor compiled? */
 	const int dc_compiled;
 	/* Allocate the necessary private data. */
-	int (*dc_create)(struct microfs_sb_info* sbi);
+	int (*dc_create)(struct microfs_sb_info* sbi, char* dd);
 	/* Free private data. */
 	int (*dc_destroy)(struct microfs_sb_info* sbi);
 	/* Reset the decompressor. */
@@ -305,7 +305,7 @@ int __microfs_readpage(struct file* file, struct page* page);
 
 /* Init the decompressor for %sbi.
  */
-int microfs_decompressor_init(struct microfs_sb_info* sbi);
+int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd);
 
 /* %microfs_decompressor op implementations used by LZ4
  * and LZO.

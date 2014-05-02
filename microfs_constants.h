@@ -25,6 +25,9 @@
 #define MICROFS_MAGIC 0x28211407
 #define MICROFS_CIGAM 0x07142128
 
+#define MICROFS_DD_XZ_MAGIC 0x377a585a
+#define MICROFS_DD_XZ_CIGAM 0x5a587a37
+
 /* microfs signature.
  */
 #define MICROFS_SIGNATURE "MinIReadOnlyFSys"

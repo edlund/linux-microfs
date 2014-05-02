@@ -245,20 +245,6 @@ sb_retry:
 		desc->de_quickie = 1;
 	}
 	
-	const __u64 expected_root_offset = padding + sizeof(*desc->de_sb);
-	const __u64 actual_root_offset = __le32_to_cpu(desc->de_sb->s_root.i_offset);
-	
-	const int invalid_offset = (
-		actual_root_offset != 0 &&
-		actual_root_offset != expected_root_offset
-	);
-	
-	if (invalid_offset) {
-		error("invalid root offset value");
-	}
-	
-	desc->de_metadatasz = expected_root_offset;
-	
 	desc->de_blkshift = __le16_to_cpu(desc->de_sb->s_blkshift);
 	desc->de_blksz = 1 << desc->de_blkshift;
 	
@@ -282,6 +268,25 @@ sb_retry:
 		desc->de_decompressionbuf = malloc(desc->de_decompressionbufsz);
 		if (!desc->de_decompressionbuf)
 			error("failed to allocate the decompression buffer");
+		
+		const __u64 actual_root_offset = __le32_to_cpu(desc->de_sb->s_root.i_offset);
+		const __u64 expected_root_offset = padding + sizeof(*desc->de_sb)
+			+ desc->de_lib->hl_info->li_dd_sz;
+		
+		const int invalid_offset = (
+			actual_root_offset != 0 &&
+			actual_root_offset != expected_root_offset
+		);
+		
+		if (invalid_offset) {
+			error("invalid root offset value");
+		}
+		
+		desc->de_metadatasz = expected_root_offset;
+		
+		__u64 dd_offset = padding + sizeof(*desc->de_sb);
+		if (desc->de_lib->hl_ck_dd(desc->de_lib_data, desc->de_image + dd_offset) < 0)
+			error("decompressor specific data check failed");
 	}
 }
 
