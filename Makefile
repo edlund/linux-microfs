@@ -21,6 +21,7 @@ endif
 ifndef HOSTCC
 HOSTCC := gcc
 endif
+
 ifndef LIB_ZLIB
 LIB_ZLIB := 1
 endif
@@ -33,6 +34,7 @@ endif
 ifndef LIB_XZ
 LIB_XZ := 0
 endif
+
 ifndef INSTALL_HOSTPROG_PATH
 INSTALL_HOSTPROG_PATH := /usr/local/bin
 endif
@@ -66,6 +68,9 @@ microfs-y := \
 	microfs_super.o \
 	microfs_read.o \
 	microfs_decompressor.o \
+	microfs_decompressor_data_singleton.o \
+	microfs_decompressor_data_queue.o \
+	microfs_decompressor_data_global.o \
 	microfs_decompressor_zlib.o \
 	microfs_decompressor_lz.o \
 	microfs_decompressor_lz4.o \
@@ -120,9 +125,10 @@ HOSTLOADLIBES_microfscki += -lz
 HOSTLOADLIBES_microfsmki += -lz
 HOSTLOADLIBES_microfslib += -lz
 ifeq ($(LIB_ZLIB),1)
+$(info -lz build)
 ccflags-y += -DMICROFS_DECOMPRESSOR_ZLIB
-endif
 HOST_EXTRACFLAGS += -DHOSTPROGS_LIB_ZLIB
+endif
 
 ifeq ($(LIB_LZ4),1)
 $(info -llz4 build)

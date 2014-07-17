@@ -24,18 +24,18 @@
 
 #include <linux/lzo.h>
 
-int decompressor_lzo_create(struct microfs_sb_info* sbi, char* dd)
+int decompressor_lzo_create(struct microfs_sb_info* sbi, void** dest)
 {
-	(void)dd;
-	return decompressor_lz_create(sbi, lzo1x_worst_compress(sbi->si_blksz));
+	return decompressor_lz_create(sbi, dest, lzo1x_worst_compress(sbi->si_blksz));
 }
 
-static int decompressor_lzo_end_consumer(struct microfs_sb_info* sbi,
+static int decompressor_lzo_end_consumer(struct microfs_sb_info* sbi, void* data,
 	int* implerr, char* input, __u32 inputsz, char* output, __u32* outputsz)
 {
 	size_t lzo_outputsz = *outputsz;
 	
 	(void)sbi;
+	(void)data;
 	
 	*implerr = lzo1x_decompress_safe(input, inputsz, output, &lzo_outputsz);
 	*outputsz = lzo_outputsz;
@@ -44,15 +44,17 @@ static int decompressor_lzo_end_consumer(struct microfs_sb_info* sbi,
 }
 
 static int decompressor_lzo_end(struct microfs_sb_info* sbi,
-	int* err, int* implerr, __u32* decompressed)
+	void* data, int* err, int* implerr, __u32* decompressed)
 {
-	return decompressor_lz_end(sbi, err, implerr, decompressed,
+	return decompressor_lz_end(sbi, data, err, implerr, decompressed,
 		decompressor_lzo_end_consumer);
 }
 
 const struct microfs_decompressor decompressor_lzo = {
 	.dc_info = &libinfo_lzo,
 	.dc_compiled = 1,
+	.dc_data_init = microfs_decompressor_data_init_noop,
+	.dc_data_exit = microfs_decompressor_data_exit_noop,
 	.dc_create = decompressor_lzo_create,
 	.dc_destroy = decompressor_lz_destroy,
 	.dc_reset = decompressor_lz_reset,

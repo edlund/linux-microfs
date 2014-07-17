@@ -24,7 +24,7 @@ struct microfs_readpage_request {
 	__u32 rr_bhoffset;
 };
 
-/* The caller must hold %microfs_sb_info.si_rdmutex.
+/* The caller must hold the appropriate buffer lock.
  */
 static int __microfs_find_block(struct super_block* const sb,
 	struct inode* const inode, __u32 blk_ptrs, __u32 blk_nr,
@@ -124,6 +124,7 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 	__u32 page;
 	__u32 buf_offset;
 	
+	void* decompressor = NULL;
 	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	struct microfs_readpage_request* rdreq = data;
 	
@@ -131,7 +132,15 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 	int implerr = 0;
 	
 	if (bhs) {
-		mutex_lock(&sbi->si_rdmutex);
+		mutex_lock(&sbi->si_filedatabuf.d_mutex);
+	}
+	
+	sbi->si_decompressor_data->dd_get(sbi, &decompressor);
+	if (IS_ERR_OR_NULL(decompressor)) {
+		pr_err("__microfs_copy_filedata_exceptionally:"
+			" failed to get the decompressor data\n");
+		err = decompressor? PTR_ERR(decompressor): -EIO;
+		goto err_dd_get;
 	}
 	
 	pr_spam("__microfs_copy_filedata_exceptionally: offset=0x%x, length=%u\n",
@@ -142,18 +151,18 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 		
 		int repeat = 0;
 		
-		sbi->si_decompressor->dc_reset(sbi);
-		sbi->si_decompressor->dc_exceptionally_begin(sbi);
+		sbi->si_decompressor->dc_reset(sbi, decompressor);
+		sbi->si_decompressor->dc_exceptionally_begin(sbi, decompressor);
 		
 		do {
-			err = sbi->si_decompressor->dc_consumebhs(sbi,
+			err = sbi->si_decompressor->dc_consumebhs(sbi, decompressor,
 				bhs, nbhs, &length, &bh, &rdreq->rr_bhoffset,
 				&decompressed, &implerr);
-			repeat = sbi->si_decompressor->dc_continue(sbi,
+			repeat = sbi->si_decompressor->dc_continue(sbi, decompressor,
 				err, implerr, length, 0);
 		} while (repeat);
 		
-		if (sbi->si_decompressor->dc_end(sbi, &err, &implerr, &decompressed) < 0)
+		if (sbi->si_decompressor->dc_end(sbi, decompressor, &err, &implerr, &decompressed) < 0)
 			goto err_inflate;
 		
 		sbi->si_filedatabuf.d_offset = offset;
@@ -186,8 +195,10 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 	}
 	
 err_inflate:
+	sbi->si_decompressor_data->dd_put(sbi, &decompressor);
+err_dd_get:
 	if (bhs) {
-		mutex_unlock(&sbi->si_rdmutex);
+		mutex_unlock(&sbi->si_filedatabuf.d_mutex);
 	}
 	return err;
 }
@@ -202,7 +213,7 @@ static int __microfs_recycle_filedata_exceptionally(struct super_block* sb,
 	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	
 	if (sbi->si_filedatabuf.d_offset == offset) {
-		mutex_lock(&sbi->si_rdmutex);
+		mutex_lock(&sbi->si_filedatabuf.d_mutex);
 		if (likely(sbi->si_filedatabuf.d_offset == offset)) {
 			cached = 1;
 			err = consumer(sb, data, NULL, 0, offset, length);
@@ -210,7 +221,7 @@ static int __microfs_recycle_filedata_exceptionally(struct super_block* sb,
 			pr_spam("__microfs_recycle_filedata_exceptionally:"
 				" near cache miss at offset 0x%x (hit stolen)\n", offset);
 		}
-		mutex_unlock(&sbi->si_rdmutex);
+		mutex_unlock(&sbi->si_filedatabuf.d_mutex);
 	}
 	return !err && cached? 0: -EIO;
 }
@@ -224,6 +235,7 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	__u32 unused;
 	__u32 decompressed = 0;
 	
+	void* decompressor = NULL;
 	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	struct microfs_readpage_request* rdreq = data;
 	
@@ -233,42 +245,48 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	
 	int strm_release = 0;
 	
-	mutex_lock(&sbi->si_rdmutex);
+	sbi->si_decompressor_data->dd_get(sbi, &decompressor);
+	if (IS_ERR_OR_NULL(decompressor)) {
+		pr_err("__microfs_copy_filedata_nominally:"
+			" failed to get the decompressor data\n");
+		err = decompressor? PTR_ERR(decompressor): -EIO;
+		goto err_inflate;
+	}
 	
 	pr_spam("__microfs_copy_filedata_nominally: offset=0x%x, length=%u\n",
 		offset, length);
 	
-	sbi->si_decompressor->dc_reset(sbi);
-	sbi->si_decompressor->dc_nominally_begin(sbi,
+	sbi->si_decompressor->dc_reset(sbi, decompressor);
+	sbi->si_decompressor->dc_nominally_begin(sbi, decompressor,
 		rdreq->rr_pages, rdreq->rr_npages);
 	
 	bh = 0;
 	page = 0;
 	
 	do {
-		if (sbi->si_decompressor->dc_copy_nominally_needpage(sbi)) {
+		if (sbi->si_decompressor->dc_copy_nominally_needpage(sbi, decompressor)) {
 			if (strm_release) {
 				strm_release = sbi->si_decompressor->dc_copy_nominally_releasepage(
-					sbi, rdreq->rr_pages[page++]);
+					sbi, decompressor, rdreq->rr_pages[page++]);
 			}
 			strm_release = sbi->si_decompressor->dc_copy_nominally_utilizepage(
-				sbi, page < rdreq->rr_npages? rdreq->rr_pages[page]: NULL);
+				sbi, decompressor, page < rdreq->rr_npages? rdreq->rr_pages[page]: NULL);
 		}
 		
-		err = sbi->si_decompressor->dc_consumebhs(sbi, bhs, nbhs, &length,
-			&bh, &rdreq->rr_bhoffset, &decompressed, &implerr);
+		err = sbi->si_decompressor->dc_consumebhs(sbi, decompressor,
+			bhs, nbhs, &length, &bh, &rdreq->rr_bhoffset, &decompressed, &implerr);
 		
-		repeat = sbi->si_decompressor->dc_continue(sbi, err, implerr,
+		repeat = sbi->si_decompressor->dc_continue(sbi, decompressor, err, implerr,
 			length, page + 1 < rdreq->rr_npages);
 		
 	} while (repeat);
 	
 	if (strm_release) {
 		sbi->si_decompressor->dc_copy_nominally_releasepage(sbi,
-			rdreq->rr_pages[page]);
+			decompressor, rdreq->rr_pages[page]);
 	}
 	
-	if (sbi->si_decompressor->dc_end(sbi, &err, &implerr, &decompressed) < 0)
+	if (sbi->si_decompressor->dc_end(sbi, decompressor, &err, &implerr, &decompressed) < 0)
 		goto err_inflate;
 	
 	unused = (rdreq->rr_npages * PAGE_CACHE_SIZE) - decompressed;
@@ -287,7 +305,7 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	}
 	
 err_inflate:
-	mutex_unlock(&sbi->si_rdmutex);
+	sbi->si_decompressor_data->dd_put(sbi, &decompressor);
 	return err;
 }
 
@@ -393,7 +411,7 @@ out_cachehit:
 	return err;
 }
 
-/* The caller must hold %microfs_sb_info.si_rdmutex.
+/* The caller must hold the appropriate buffer lock.
  */
 void* __microfs_read(struct super_block* sb,
 	struct microfs_data_buffer* destbuf, __u32 offset, __u32 length)
@@ -479,20 +497,20 @@ int __microfs_readpage(struct file* file, struct page* page)
 	pr_spam("__microfs_readpage: start_index=%u, end_index=%u, max_index=%u\n",
 		start_index, end_index, max_index);
 	
-	mutex_lock(&sbi->si_rdmutex);
+	mutex_lock(&sbi->si_metadata_blkptrbuf.d_mutex);
 	for (i = 0; (data_length < PAGE_CACHE_SIZE && blk_nr + i < blk_ptrs) &&
 			(i == 0 || sbi->si_blksz < PAGE_CACHE_SIZE); ++i) {
 		err = __microfs_find_block(sb, inode, blk_ptrs, blk_nr + i,
 			&blk_data_offset, &blk_data_length);
 		if (unlikely(err)) {
-			mutex_unlock(&sbi->si_rdmutex);
+			mutex_unlock(&sbi->si_metadata_blkptrbuf.d_mutex);
 			goto err_find_block;
 		}
 		if (!data_offset)
 			data_offset = blk_data_offset;
 		data_length += blk_data_length;
 	}
-	mutex_unlock(&sbi->si_rdmutex);
+	mutex_unlock(&sbi->si_metadata_blkptrbuf.d_mutex);
 	
 	pr_spam("__microfs_readpage: data_offset=0x%x, data_length=%u\n",
 		data_offset, data_length);
@@ -587,3 +605,4 @@ err_mem:
 err_find_block:
 	return err;
 }
+

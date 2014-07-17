@@ -81,6 +81,9 @@ static inline __u32 sz_blkceil(const __u32 size, const __u32 blksz)
 
 #ifdef __KERNEL__
 
+struct microfs_decompressor;
+struct microfs_decompressor_data;
+
 /* Buffer used to hold data read from the image.
  */
 struct microfs_data_buffer {
@@ -92,6 +95,8 @@ struct microfs_data_buffer {
 	__u32 d_used;
 	/* The offset that the data was read from. */
 	__u32 d_offset;
+	/* Buffer lock. */
+	struct mutex d_mutex;
 };
 
 /* In-memory super block.
@@ -117,12 +122,10 @@ struct microfs_sb_info {
 	struct microfs_data_buffer si_metadata_dentrybuf;
 	/* Compressed file data buffer. */
 	struct microfs_data_buffer si_filedatabuf;
-	/* Read mutex. */
-	struct mutex si_rdmutex;
 	/* Block data decompressor. */
 	const struct microfs_decompressor* si_decompressor;
 	/* Block data decompressor private storage. */
-	void* si_decompressor_data;
+	struct microfs_decompressor_data* si_decompressor_data;
 };
 
 /* A data block decompression abstraction.
@@ -132,35 +135,54 @@ struct microfs_decompressor {
 	const struct libinfo* dc_info;
 	/* Decompressor compiled? */
 	const int dc_compiled;
+	/* Called by microfs_decompressor_init(). */
+	int (*dc_data_init)(struct microfs_sb_info* sbi, void* dd);
+	/* Cleans up after %dc_data_init(). */
+	int (*dc_data_exit)(struct microfs_sb_info* sbi);
 	/* Allocate the necessary private data. */
-	int (*dc_create)(struct microfs_sb_info* sbi, char* dd);
-	/* Free private data. */
-	int (*dc_destroy)(struct microfs_sb_info* sbi);
+	int (*dc_create)(struct microfs_sb_info* sbi, void** dest);
+	/* Free private data, see %microfs_decompressor_data.dd_destroy(). */
+	int (*dc_destroy)(struct microfs_sb_info* sbi, void* data);
 	/* Reset the decompressor. */
-	int (*dc_reset)(struct microfs_sb_info* sbi);
+	int (*dc_reset)(struct microfs_sb_info* sbi, void* data);
 	/* Prepare the decompressor for %__microfs_copy_filedata_exceptionally. */
-	int (*dc_exceptionally_begin)(struct microfs_sb_info* sbi);
+	int (*dc_exceptionally_begin)(struct microfs_sb_info* sbi, void* data);
 	/* Prepare the decompressor for %__microfs_copy_filedata_nominally. */
-	int (*dc_nominally_begin)(struct microfs_sb_info* sbi,
+	int (*dc_nominally_begin)(struct microfs_sb_info* sbi, void* data,
 		struct page** pages, __u32 npages);
 	/* Decompression stream: Is a new page cache page needed? */
-	int (*dc_copy_nominally_needpage)(struct microfs_sb_info* sbi);
+	int (*dc_copy_nominally_needpage)(struct microfs_sb_info* sbi, void* data);
 	/* Decompression stream: Use the given page cache page. */
 	int (*dc_copy_nominally_utilizepage)(struct microfs_sb_info* sbi,
-		struct page* page);
+		void* data, struct page* page);
 	/* Decompression stream: Release the given page cache page. */
 	int (*dc_copy_nominally_releasepage)(struct microfs_sb_info* sbi,
-		struct page* page);
+		void* data, struct page* page);
 	/* Use the data stored in the given buffer heads. */
-	int (*dc_consumebhs)(struct microfs_sb_info* sbi,
+	int (*dc_consumebhs)(struct microfs_sb_info* sbi, void* data,
 		struct buffer_head** bhs, __u32 nbhs, __u32* length,
 		__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr);
 	/* Continue consuming bhs? */
-	int (*dc_continue)(struct microfs_sb_info* sbi,
+	int (*dc_continue)(struct microfs_sb_info* sbi, void* data,
 		int err, int implerr, __u32 length, int more_avail_out);
 	/* Complete a decompression operation. */
-	int (*dc_end)(struct microfs_sb_info* sbi, int* err,
+	int (*dc_end)(struct microfs_sb_info* sbi, void* data, int* err,
 		int* implerr, __u32* decompressed);
+};
+
+/* %microfs_decompressor private data and access methods.
+ */
+struct microfs_decompressor_data {
+	/* Decompressor private data, see %dd_get() and %dd_put(). */
+	void* dd_private;
+	/* Decompressor info from the image. */
+	void* dd_info;
+	/* Get decompressor data. */
+	void (*dd_get)(struct microfs_sb_info* sbi, void** dest);
+	/* Put decompressor data. */
+	void (*dd_put)(struct microfs_sb_info* sbi, void** src);
+	/* Destroy decompressor data. */
+	void (*dd_destroy)(struct microfs_sb_info* sbi);
 };
 
 extern const struct microfs_decompressor decompressor_zlib;
@@ -202,7 +224,9 @@ typedef int (*microfs_read_blks_recycler)(struct super_block* sb,
 
 /* Read PAGE_CACHE_SIZEd blocks from the image. %consumer will
  * be called once the requested blocks have been read and is
- * responsible for doing something useful with them.
+ * responsible for doing something useful with them. %recycler
+ * will check if it is possible to give %consumer the requested
+ * data from a cache instead of reading it from the image.
  */
 int __microfs_read_blks(struct super_block* sb,
 	struct address_space* mapping, void* data,
@@ -221,37 +245,76 @@ void* __microfs_read(struct super_block* sb,
  */
 int __microfs_readpage(struct file* file, struct page* page);
 
-/* Init the decompressor for %sbi.
+typedef int (*microfs_decompressor_data_creator)(struct microfs_sb_info* sbi);
+
+/* Init the decompressor for %sbi. %creator can be one of:
+ * 
+ * - %microfs_decompressor_data_singleton_create()
+ * - %microfs_decompressor_data_queue_create()
+ * - %microfs_decompressor_data_global_create()
+ * 
+ * and determines how decompressor data (state, buffers and
+ * such things) is handled.
  */
-int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd);
+int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd,
+	microfs_decompressor_data_creator creator);
+
+/* Used by decompressors without any persistant decompressor
+ * data.
+ */
+int microfs_decompressor_data_init_noop(struct microfs_sb_info* sbi, void* dd);
+int microfs_decompressor_data_exit_noop(struct microfs_sb_info* sbi);
+
+/* A single decompressor data instance per mounted image
+ * available, it is simply protected by a mutex.
+ */
+int microfs_decompressor_data_singleton_create(struct microfs_sb_info* sbi);
+
+/* Multiple decompressor data instances available. If no
+ * instances are available and no new ones can be created,
+ * the calling thread will have to wait for another thread
+ * stop using its decompressor data instance.
+ * 
+ * The maximum number of instances is 2 * num_online_cpus().
+ */
+int microfs_decompressor_data_queue_create(struct microfs_sb_info* sbi);
+
+/* A single decompressor data instance used by all mounted images.
+ */
+int microfs_decompressor_data_global_create(struct microfs_sb_info* sbi);
 
 /* %microfs_decompressor op implementations used by LZ4
  * and LZO.
  */
 #if defined(MICROFS_DECOMPRESSOR_LZ4) || defined(MICROFS_DECOMPRESSOR_LZO)
 #define MICROFS_DECOMPRESSOR_LZ
-int decompressor_lz_create(struct microfs_sb_info* sbi, __u32 upperbound);
-int decompressor_lz_destroy(struct microfs_sb_info* sbi);
-int decompressor_lz_reset(struct microfs_sb_info* sbi);
-int decompressor_lz_exceptionally_begin(struct microfs_sb_info* sbi);
+
+typedef int (*decompressor_lz_end_consumer)(struct microfs_sb_info* sbi,
+	void* data, int* implerr,
+	char* input, __u32 inputsz,
+	char* output, __u32* outputsz);
+
+int decompressor_lz_create(struct microfs_sb_info* sbi, void** dest, __u32 upperbound);
+int decompressor_lz_destroy(struct microfs_sb_info* sbi, void* data);
+int decompressor_lz_reset(struct microfs_sb_info* sbi, void* data);
+int decompressor_lz_exceptionally_begin(struct microfs_sb_info* sbi, void* data);
 int decompressor_lz_nominally_begin(struct microfs_sb_info* sbi,
-	struct page** pages, __u32 npages);
-int decompressor_lz_copy_nominally_needpage(
-	struct microfs_sb_info* sbi);
-int decompressor_lz_copy_nominally_utilizepage(
-	struct microfs_sb_info* sbi, struct page* page);
-int decompressor_lz_copy_nominally_releasepage(
-	struct microfs_sb_info* sbi, struct page* page);
-int decompressor_lz_consumebhs(struct microfs_sb_info* sbi,
+	void* data, struct page** pages, __u32 npages);
+int decompressor_lz_copy_nominally_needpage(struct microfs_sb_info* sbi,
+	void* data);
+int decompressor_lz_copy_nominally_utilizepage(struct microfs_sb_info* sbi,
+	void* data, struct page* page);
+int decompressor_lz_copy_nominally_releasepage(struct microfs_sb_info* sbi,
+	void* data, struct page* page);
+int decompressor_lz_consumebhs(struct microfs_sb_info* sbi, void* data,
 	struct buffer_head** bhs, __u32 nbhs, __u32* length,
 	__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr);
-int decompressor_lz_continue(struct microfs_sb_info* sbi,
+int decompressor_lz_continue(struct microfs_sb_info* sbi, void* data,
 	int err, int implerr, __u32 length, int more_avail_out);
-typedef int (*decompressor_lz_end_consumer)(struct microfs_sb_info* sbi,
-	int* implerr, char* input, __u32 inputsz, char* output, __u32* outputsz);
-int decompressor_lz_end(struct microfs_sb_info* sbi,
+int decompressor_lz_end(struct microfs_sb_info* sbi, void* data,
 	int* err, int* implerr, __u32* decompressed,
 	decompressor_lz_end_consumer consumer);
+
 #endif
 
 #endif

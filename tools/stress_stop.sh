@@ -31,6 +31,8 @@ if [[ -f "${marker}" ]] ; then
 			sleep 0.1s
 		done
 	done
+	sleep 1s
 	trap_ERR
 	rm -f "${marker}"
 fi
+

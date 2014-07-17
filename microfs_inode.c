@@ -112,7 +112,7 @@ static struct dentry* microfs_lookup(struct inode* dinode,
 	
 	pr_devel_once("microfs_lookup: first call\n");
 	
-	mutex_lock(&sbi->si_rdmutex);
+	mutex_lock(&sbi->si_metadata_dentrybuf.d_mutex);
 	
 	while (offset < i_size_read(dinode)) {
 		struct microfs_inode* minode;
@@ -170,7 +170,7 @@ static struct dentry* microfs_lookup(struct inode* dinode,
 	
 err_inode:
 err_io:
-	mutex_unlock(&sbi->si_rdmutex);
+	mutex_unlock(&sbi->si_metadata_dentrybuf.d_mutex);
 	if (unlikely(IS_ERR(err)))
 		return err;
 	
@@ -219,7 +219,7 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 		
 		int err;
 		
-		mutex_lock(&sbi->si_rdmutex);
+		mutex_lock(&sbi->si_metadata_dentrybuf.d_mutex);
 		
 		dentry_offset = microfs_get_offset(vinode) + offset;
 		minode = (struct microfs_inode*)__microfs_read(sb,
@@ -252,7 +252,7 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 		mode = __le16_to_cpu(minode->i_mode);
 		minode = NULL;
 		
-		mutex_unlock(&sbi->si_rdmutex);
+		mutex_unlock(&sbi->si_metadata_dentrybuf.d_mutex);
 		
 		if (!dir_emit(ctx, fillbuf, namelen, ino, mode >> 12))
 			break;
@@ -265,7 +265,7 @@ static int microfs_iterate(struct file* file, struct dir_context* ctx)
 	return 0;
 	
 err_io:
-	mutex_unlock(&sbi->si_rdmutex);
+	mutex_unlock(&sbi->si_metadata_dentrybuf.d_mutex);
 	kfree(fillbuf);
 err_fillbuf:
 	return err;
@@ -312,7 +312,7 @@ static int microfs_readdir(struct file* file, void* dirent,
 		
 		int err;
 		
-		mutex_lock(&sbi->si_rdmutex);
+		mutex_lock(&sbi->si_metadata_dentrybuf.d_mutex);
 		
 		dentry_offset = microfs_get_offset(vinode) + offset;
 		minode = (struct microfs_inode*)__microfs_read(sb,
@@ -346,7 +346,7 @@ static int microfs_readdir(struct file* file, void* dirent,
 		mode = __le16_to_cpu(minode->i_mode);
 		minode = NULL;
 		
-		mutex_unlock(&sbi->si_rdmutex);
+		mutex_unlock(&sbi->si_metadata_dentrybuf.d_mutex);
 		
 		err = filldir(dirent, fillbuf, namelen, offset, ino, mode >> 12);
 		if (unlikely(err)) {
@@ -362,7 +362,7 @@ static int microfs_readdir(struct file* file, void* dirent,
 	return 0;
 	
 err_io:
-	mutex_unlock(&sbi->si_rdmutex);
+	mutex_unlock(&sbi->si_metadata_dentrybuf.d_mutex);
 	kfree(fillbuf);
 err_fillbuf:
 	return err;

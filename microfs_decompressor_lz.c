@@ -31,7 +31,8 @@ struct decompressor_lz_data {
 	__u32 lz_npages;
 };
 
-int decompressor_lz_create(struct microfs_sb_info* sbi, __u32 upperbound)
+int decompressor_lz_create(struct microfs_sb_info* sbi,
+	void** dest, __u32 upperbound)
 {
 	__u32 outputbufsz = max_t(__u32, sbi->si_blksz, PAGE_CACHE_SIZE);
 	__u32 inputbufsz = max_t(__u32, upperbound, PAGE_CACHE_SIZE * 2);
@@ -63,7 +64,7 @@ int decompressor_lz_create(struct microfs_sb_info* sbi, __u32 upperbound)
 	
 #undef LZ_DATA_BUF
 	
-	sbi->si_decompressor_data = data;
+	*dest = data;
 	
 	return 0;
 	
@@ -76,79 +77,81 @@ err_mem_data:
 
 }
 
-int decompressor_lz_destroy(struct microfs_sb_info* sbi)
+int decompressor_lz_destroy(struct microfs_sb_info* sbi, void* data)
 {
-	struct decompressor_lz_data* data = sbi->si_decompressor_data;
-	sbi->si_decompressor_data = NULL;
+	struct decompressor_lz_data* lzdata = data;
 	
-	if (data) {
-		kfree(data->lz_outputbuf);
-		kfree(data->lz_inputbuf);
-		kfree(data);
+	if (lzdata) {
+		kfree(lzdata->lz_outputbuf);
+		kfree(lzdata->lz_inputbuf);
+		kfree(lzdata);
 	}
 	
 	return 0;
 }
 
-int decompressor_lz_reset(struct microfs_sb_info* sbi)
+int decompressor_lz_reset(struct microfs_sb_info* sbi, void* data)
 {
 	(void)sbi;
+	(void)data;
 	return 0;
 }
 
-int decompressor_lz_exceptionally_begin(struct microfs_sb_info* sbi)
+int decompressor_lz_exceptionally_begin(struct microfs_sb_info* sbi, void* data)
 {
-	struct decompressor_lz_data* data = sbi->si_decompressor_data;
-	data->lz_pages = NULL;
-	data->lz_npages = 0;
+	struct decompressor_lz_data* lzdata = data;
+	lzdata->lz_pages = NULL;
+	lzdata->lz_npages = 0;
 	return 0;
 }
 
-int decompressor_lz_nominally_begin(struct microfs_sb_info* sbi,
+int decompressor_lz_nominally_begin(struct microfs_sb_info* sbi, void* data,
 	struct page** pages, __u32 npages)
 {
-	struct decompressor_lz_data* data = sbi->si_decompressor_data;
-	data->lz_pages = pages;
-	data->lz_npages = npages;
+	struct decompressor_lz_data* lzdata = data;
+	lzdata->lz_pages = pages;
+	lzdata->lz_npages = npages;
 	return 0;
 }
 
-int decompressor_lz_copy_nominally_needpage(
-	struct microfs_sb_info* sbi)
+int decompressor_lz_copy_nominally_needpage(struct microfs_sb_info* sbi,
+	void* data)
 {
 	(void)sbi;
+	(void)data;
 	return 0;
 }
 
-int decompressor_lz_copy_nominally_utilizepage(
-	struct microfs_sb_info* sbi, struct page* page)
-{
-	(void)sbi;
-	(void)page;
-	return 0;
-}
-
-int decompressor_lz_copy_nominally_releasepage(
-	struct microfs_sb_info* sbi, struct page* page)
+int decompressor_lz_copy_nominally_utilizepage(struct microfs_sb_info* sbi,
+	void* data, struct page* page)
 {
 	(void)sbi;
 	(void)page;
 	return 0;
 }
 
-int decompressor_lz_consumebhs(struct microfs_sb_info* sbi,
+int decompressor_lz_copy_nominally_releasepage(struct microfs_sb_info* sbi,
+	void* data, struct page* page)
+{
+	(void)sbi;
+	(void)data;
+	(void)page;
+	return 0;
+}
+
+int decompressor_lz_consumebhs(struct microfs_sb_info* sbi, void* data,
 	struct buffer_head** bhs, __u32 nbhs, __u32* length,
 	__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr)
 {
 	__u32 bh_avail;
 	__u32 buf_offset = 0;
 	
-	struct decompressor_lz_data* data = sbi->si_decompressor_data;
+	struct decompressor_lz_data* lzdata = data;
 	
-	data->lz_inputbufusedsz = *length;
+	lzdata->lz_inputbufusedsz = *length;
 	
 	pr_spam("decompressor_lz_consumebhs: data->lz_inputbufusedsz=%u\n",
-		data->lz_inputbufusedsz);
+		lzdata->lz_inputbufusedsz);
 	
 	while (*bh < nbhs && *length > 0) {
 		pr_spam("decompressor_lz_consumebhs: *bh=%u, bhs[*bh]=0x%p, nbhs=%u\n",
@@ -158,7 +161,7 @@ int decompressor_lz_consumebhs(struct microfs_sb_info* sbi,
 		pr_spam("decompressor_lz_consumebhs: *bh_offset=%u, *bh_avail=%u\n",
 			*bh_offset, bh_avail);
 		
-		memcpy(data->lz_inputbuf + buf_offset, bhs[*bh]->b_data
+		memcpy(lzdata->lz_inputbuf + buf_offset, bhs[*bh]->b_data
 			+ *bh_offset, bh_avail);
 		
 		pr_spam("decompressor_lz_consumebhs: *length=%u, *bh_offset=%u,"
@@ -174,10 +177,11 @@ int decompressor_lz_consumebhs(struct microfs_sb_info* sbi,
 	return 0;
 }
 
-int decompressor_lz_continue(struct microfs_sb_info* sbi,
+int decompressor_lz_continue(struct microfs_sb_info* sbi, void* data,
 	int err, int implerr, __u32 length, int more_avail_out)
 {
 	(void)sbi;
+	(void)data;
 	(void)err;
 	(void)implerr;
 	(void)length;
@@ -185,7 +189,7 @@ int decompressor_lz_continue(struct microfs_sb_info* sbi,
 	return 0;
 }
 
-int decompressor_lz_end(struct microfs_sb_info* sbi,
+int decompressor_lz_end(struct microfs_sb_info* sbi, void* data,
 	int* err, int* implerr, __u32* decompressed,
 	decompressor_lz_end_consumer consumer)
 {
@@ -194,25 +198,25 @@ int decompressor_lz_end(struct microfs_sb_info* sbi,
 	__u32 avail;
 	__u32 offset;
 	
-	struct decompressor_lz_data* data = sbi->si_decompressor_data;
+	struct decompressor_lz_data* lzdata = data;
 	
-	__u32 outputsz = data->lz_pages?
-		data->lz_outputbufsz: sbi->si_filedatabuf.d_size;
-	char* output = data->lz_pages?
-		data->lz_outputbuf: sbi->si_filedatabuf.d_data;
+	__u32 outputsz = lzdata->lz_pages?
+		lzdata->lz_outputbufsz: sbi->si_filedatabuf.d_size;
+	char* output = lzdata->lz_pages?
+		lzdata->lz_outputbuf: sbi->si_filedatabuf.d_data;
 	
 	if (*err) {
 		goto err_decompress;
 	}
 	
 	pr_spam("decompressor_lz_end: data->lz_pages=0x%p, data->lz_npages=%u\n",
-			data->lz_pages, data->lz_npages);
+			lzdata->lz_pages, lzdata->lz_npages);
 	pr_spam("decompressor_lz_end: output=0x%p,"
 			" data->lz_outputbuf=0x%p, sbi->si_filedatabuf.d_data=0x%p\n",
-		output, data->lz_outputbuf, sbi->si_filedatabuf.d_data);
+		output, lzdata->lz_outputbuf, sbi->si_filedatabuf.d_data);
 	
-	*err = consumer(sbi, implerr,
-		data->lz_inputbuf, data->lz_inputbufusedsz,
+	*err = consumer(sbi, data, implerr,
+		lzdata->lz_inputbuf, lzdata->lz_inputbufusedsz,
 		output, &outputsz);
 	if (*err < 0) {
 		goto err_decompress;
@@ -220,25 +224,25 @@ int decompressor_lz_end(struct microfs_sb_info* sbi,
 	
 	*decompressed = outputsz;
 	
-	pr_spam("decompressor_lz_end: outputsz=%zu\n", outputsz);
+	pr_spam("decompressor_lz_end: outputsz=%u\n", outputsz);
 	
-	if (data->lz_pages) {
+	if (lzdata->lz_pages) {
 		/* Called by %__microfs_copy_filedata_nominally. Copy the data
 		 * to the page cache pages.
 		 */
 		for (i = 0, avail = 0, offset = 0;
-				i < data->lz_npages && outputsz > 0;
+				i < lzdata->lz_npages && outputsz > 0;
 				i += 1, offset += PAGE_CACHE_SIZE) {
-			void* page_data = kmap(data->lz_pages[i]);
+			void* page_data = kmap(lzdata->lz_pages[i]);
 			avail = min_t(__u32, outputsz, PAGE_CACHE_SIZE);
 			
-			pr_spam("decompressor_lz_end: i=%d, offset=%u, avail=%u, outputsz=%zu\n",
+			pr_spam("decompressor_lz_end: i=%d, offset=%u, avail=%u, outputsz=%u\n",
 				i, offset, avail, outputsz);
 			
 			outputsz -= avail;
 			
 			memcpy(page_data, output + offset, avail);
-			kunmap(data->lz_pages[i]);
+			kunmap(lzdata->lz_pages[i]);
 		}
 	} else {
 		/* Called by %__microfs_copy_filedata_exceptionally. The data

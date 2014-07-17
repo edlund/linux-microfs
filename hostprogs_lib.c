@@ -34,6 +34,15 @@ static const struct hostprog_lib* hostprog_libs[] = {
 	&hostprog_lib_null
 };
 
+const struct hostprog_lib* hostprog_lib_find_any(void)
+{
+	for (int i = 0; hostprog_libs[i]->hl_info; i++) {
+		if (hostprog_libs[i]->hl_compiled)
+			return hostprog_libs[i];
+	}
+	return NULL;
+}
+
 const struct hostprog_lib* hostprog_lib_find_byid(const int id)
 {
 	for (int i = 0; hostprog_libs[i]->hl_info; i++) {

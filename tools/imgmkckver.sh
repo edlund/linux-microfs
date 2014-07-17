@@ -30,9 +30,11 @@ extract_arg=""
 img_src=""
 rand_seed="`date +%s`"
 checksum_prog=""
+data_creator=""
 stress_test=0
+reuse_forbidden=0
 
-options="t:m:c:s:d:p:x:i:r:C:S"
+options="t:m:c:s:d:p:x:i:r:C:D:SF"
 while getopts $options option
 do
 	case $option in
@@ -46,16 +48,18 @@ do
 		i ) img_src=$OPTARG ;;
 		r ) rand_seed=$OPTARG ;;
 		C ) checksum_prog=$OPTARG ;;
+		D ) data_creator=$OPTARG ;;
 		S ) stress_test=1 ;;
+		F ) reuse_forbidden=1 ;;
 	esac
 done
 
 if [[ ! -d "${src_dir}" || ! -d "${dest_dir}" || \
 		-z "${mk_cmd}" || -z "${ck_cmd}" || -z "${img_src}" || \
 		-z "${mount_type}" || ! ( "${rand_seed}" =~ ^[0-9]+$ ) || \
-		-z "${checksum_prog}" ]] ; then
+		-z "${checksum_prog}" || -z "${data_creator}" ]] ; then
 	cat <<EOF
-Usage: `basename $0` -t:m:c:s:d:x:k:C: [-r:S]
+Usage: `basename $0` -t:m:c:s:d:x:k:C:D: [-r:SF]
 
 Create a file system image, check it, mount it and compare
 it against its source, all in one (long) command.
@@ -70,7 +74,9 @@ it against its source, all in one (long) command.
     -i <str>    the source of -s, the command that created it
     -r <int>    seed for random generators (only matters with -S)
     -C <str>    checksum program to use
+    -D <str>    data creator to use (see microfs_decompressor_data_*)
     -S          stress test (very time and resource consuming)
+    -F          do not use existing image files, always create them
 EOF
 	exit 1
 fi
@@ -81,9 +87,6 @@ fi
 img_file="${dest_dir}/${img_prefix}${mk_cmd//[^-a-zA-Z0-9]/_}.img"
 cmd_log="${img_file}.log"
 
-atexit_0 rm -f "${img_file}"
-atexit_0 rm -f "${cmd_log}*"
-
 if [ "${extract_arg}" != "" ] ; then
 	extract_dir="${img_file}.ext"
 	ck_cmd="${ck_cmd} ${extract_arg} \"${extract_dir}\""
@@ -91,21 +94,26 @@ else
 	extract_dir=""
 fi
 
-eval "${mk_cmd} \"${src_dir}\" \"${img_file}\" 1>\"${cmd_log}.mk.1\" 2>\"${cmd_log}.mk.2\""
-eval "${ck_cmd} \"${img_file}\" 1>\"${cmd_log}.ck.1\" 2>\"${cmd_log}.ck.2\""
-
-if [ -d "${extract_dir}" ] ; then
-	eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\" -c \"${checksum_prog}\""
-	rm -rf "${extract_dir}"
+if [[ ! -f "${img_file}" || $reuse_forbidden -eq 1 ]] ; then
+	eval "${mk_cmd} \"${src_dir}\" \"${img_file}\" 1>\"${cmd_log}.mk.1\" 2>\"${cmd_log}.mk.2\""
+	eval "${ck_cmd} \"${img_file}\" 1>\"${cmd_log}.ck.1\" 2>\"${cmd_log}.ck.2\""
+	if [ -d "${extract_dir}" ] ; then
+		eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\" -c \"${checksum_prog}\""
+		rm -rf "${extract_dir}"
+	fi
 fi
 
 img_mount="${img_file}.mount"
 img_mountid="`date +%s`"
-img_mountopts="-r -o loop,debug_mountid=${img_mountid} -t ${mount_type}"
+img_mountopts=(
+	"-r"
+	"-o loop,debug_mountid=${img_mountid},decompressor_data_creator=${data_creator}"
+	"-t ${mount_type}"
+)
 
 mkdir "${img_mount}"
 atexit_0 rmdir "${img_mount}"
-eval "sudo mount ${img_mountopts} \"${img_file}\" \"${img_mount}\""
+eval "sudo mount ${img_mountopts[@]} \"${img_file}\" \"${img_mount}\""
 atexit sudo umount "${img_mount}"
 
 if [[ $stress_test -ne 0 ]] ; then
@@ -129,7 +137,16 @@ if [[ $stress_test -ne 0 ]] ; then
 	eval "atexit ${stress_stop_cmd}"
 fi
 
-eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${img_mount}\" -e -w \"${dest_dir}\" -c \"${checksum_prog}\""
+cmptreeopts=(
+	"-a \"${src_dir}\""
+	"-b \"${img_mount}\""
+	"-e"
+	"-w \"${dest_dir}\""
+	"-c \"${checksum_prog}\""
+	"-n \"${img_prefix}\""
+)
+
+eval "${script_dir}/cmptrees.sh ${cmptreeopts[@]}"
 eval "${script_dir}/rofstests.py \"${img_mount}\""
 
 eval "${script_dir}/logck.sh -l \"${cmd_log}\" -s \"${img_src}\" -m \"${img_mountid}\""

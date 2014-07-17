@@ -896,7 +896,10 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	
 	spec->sp_name = MICROFS_DEFAULTNAME;
 	spec->sp_shareblocks = 1;
-	spec->sp_lib = &hostprog_lib_zlib;
+	spec->sp_lib = hostprog_lib_find_any();
+	if (!spec->sp_lib) {
+		error("could not determine which hostprog lib to use");
+	}
 	
 	spec->sp_pagesz = sysconf(_SC_PAGESIZE);
 	spec->sp_blksz = MICROFS_DEFAULBLKSZ;

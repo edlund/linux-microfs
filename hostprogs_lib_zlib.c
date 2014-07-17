@@ -34,6 +34,8 @@ __u32 hostprog_lib_zlib_crc32(char* data, __u64 sz)
 	return crc32(crc, (Bytef*)data, sz);
 }
 
+#ifdef HOSTPROGS_LIB_ZLIB
+
 static int hostprog_lib_zlib_init(void** data, __u32 blksz)
 {
 	(void)blksz;
@@ -126,4 +128,13 @@ const struct hostprog_lib hostprog_lib_zlib = {
 	.hl_upperbound = hostprog_lib_zlib_upperbound,
 	.hl_strerror = hostprog_lib_zlib_strerror
 };
+
+#else
+
+const struct hostprog_lib hostprog_lib_zlib = {
+	.hl_info = &libinfo_zlib,
+	.hl_compiled = 0
+};
+
+#endif
 

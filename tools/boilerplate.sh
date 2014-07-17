@@ -75,6 +75,13 @@ _atexit() {
 	_exit_cmd_types[$n]="${type}"
 }
 
+# Remove the last atexit command.
+_atexit_pop() {
+	local n=${#_exit_cmds[@]}-1
+	unset _exit_cmds[$n]
+	unset _exit_cmd_types[$n]
+}
+
 # Always run the given command $* at exit.
 atexit() {
 	_atexit $_EXIT_CMD_ANY "$*"

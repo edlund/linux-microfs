@@ -32,9 +32,10 @@ The difference between `cramfs` and `microfs` lies in that `microfs`
    value for the image stored in the superblock.
  * Will try to uncompress data from the buffer heads directly
    to the page cache pages if it is possible.
- * Will have different read buffers and decompressors for
-   different mounted images. (`microfs` will therefore always use
-   more memory than `cramfs`.)
+ * Will have different read buffers for different mounted images
+   in order to try to maximize the number of cache hits.
+ * Support different options for dealing with concurrent requests
+   for decompression of data.
  * Does not support file holes by simply skipping the zero bytes
    like `cramfs`, instead it will treat file holes as any other data
    and compress it.
@@ -127,9 +128,9 @@ by specifying `LIB_*`-params for make. Available options are:
  * `LIB_XZ`
 
 For example, to add support for LZ4, simply use `make LIB_LZ4=1`.
-Please note that zlib support is always compiled for the hostprogs,
-so specifying `LIB_ZLIB=0` will only mean that the lkm is compiled
-without zlib support.
+Please note that the hostprogs will always need zlib in order
+to compile, so specifying `LIB_ZLIB=0` will not allow `microfs` to
+compile in an environment where zlib is not installed.
 
 Use the make command line argument `DEBUG=1` or the combination
 `DEBUG=1 DEBUG_SPAM=1` to do a debug build. Please note that a
@@ -137,6 +138,45 @@ Use the make command line argument `DEBUG=1` or the combination
 the name), it can however be very useful when dealing with a
 bug which is reproducible with a small set of files (or few
 operations).
+
+## Mount options
+
+It is possible to tweak the behaviour of microfs by specifying
+options when an image is mounted.
+
+ * `metadata_blkptrbufsz=%u`: The desired size of the metadata
+   buffer for block pointers.
+ * `metadata_dentrybufsz=%u`: The desired size of the metadata
+   buffer for dentries/inodes.
+ * `decompressor_data_creator=%s`: How microfs should handle
+   decompressor data. See the section "Decompressor data" below.
+ * `debug_mountid=%u`: Specify a mount ID which can help with
+   debugging. It will printed as an INFO log message when
+   the image is mounted.
+ * `debug_cksig`: Check the super block signature, this is
+   normally not required as the magic number is always checked.
+
+An example: `mount -o decompressor_data_creator=queue ...`.
+
+## Decompressor data
+
+"decompressor data" is basically what a specific decompressor
+needs to be able to handle compressed blocks. It is usually internal
+state and buffers for the decompressor in question. As such,
+an instance of decompressor data must be protected from concurrent
+access in order to keep its state sane when there are several
+simultaneous requests to decompress data.
+
+`microfs` provides a couple of different ways to deal with
+decompressor data and access to it:
+
+ * `microfs_decompressor_data_singleton`: One instance of decompressor
+   data per mounted image, protected by a mutex.
+ * `microfs_decompressor_data_queue`: Multiple instances of decompressor
+   data per mounted image, with a maximum of `2 * num_online_cpus()`
+   instances, protected by a mutex and a wait queue.
+ * `microfs_decompressor_data_global`: One global instance of decompressor
+   data used by all mounted images, protected by a mutex.
 
 ## Testing microfs
 
@@ -516,5 +556,3 @@ Result:
 ## Ideas for possible future development
 
  * Add support for compressed metadata?
- * Implement per-cpu decompression to improve performance for
-   parallel I/O?

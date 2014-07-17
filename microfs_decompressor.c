@@ -18,6 +18,10 @@
 
 #include "microfs.h"
 
+#include <linux/cpumask.h>
+#include <linux/sched.h>
+#include <linux/wait.h>
+
 static const struct microfs_decompressor decompressor_null = {
 	.dc_info = NULL
 };
@@ -30,7 +34,8 @@ static const struct microfs_decompressor* decompressors[] = {
 	&decompressor_null
 };
 
-int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd)
+int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd,
+	microfs_decompressor_data_creator creator)
 {
 	int i;
 	int err = 0;
@@ -62,12 +67,33 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd)
 		goto err;
 	}
 	
+	err = decompressors[i]->dc_data_init(sbi, dd);
+	if (err) {
+		pr_err("%s: could not init the decompressor data",
+			decompressors[i]->dc_info->li_name);
+		goto err;
+	}
+	
 	sbi->si_decompressor = decompressors[i];
-	return sbi->si_decompressor->dc_create(sbi, dd);
+	
+	return creator(sbi);
 	
 err:
 	return err;
 }
 
+int microfs_decompressor_data_init_noop(struct microfs_sb_info* sbi, void* dd)
+{
+	(void)sbi;
+	(void)dd;
+	
+	return 0;
+}
 
+int microfs_decompressor_data_exit_noop(struct microfs_sb_info* sbi)
+{
+	(void)sbi;
+	
+	return 0;
+}
 

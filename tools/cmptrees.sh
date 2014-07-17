@@ -24,9 +24,10 @@ dir_a=""
 dir_b=""
 write_err=""
 write_path=""
+diff_name=""
 checksum_prog="sha512sum"
 
-options="ew:a:b:c:"
+options="ew:a:b:n:c:"
 while getopts $options option
 do
 	case $option in
@@ -34,6 +35,7 @@ do
 		w ) write_path=$OPTARG ;;
 		a ) dir_a=$OPTARG ;;
 		b ) dir_b=$OPTARG ;;
+		n ) diff_name=$OPTARG ;;
 		c ) checksum_prog=$OPTARG ;;
 	esac
 done
@@ -51,6 +53,7 @@ stat info.
     -a <str>   path to the first dir
     -b <str>   path to the second dir
     -w <str>   path to where the result should be saved
+    -n <str>   name for the diff file (without extension)
     -c <str>   name of the checksum program to use
     -e         only write info files when an error occurs (depends on -w)
 EOF
@@ -78,9 +81,15 @@ if [[ ! -z "${write_path}" && ( "${write_err}" == "" || \
 	dir_b=`basename $dir_b`
 	dir_a="${dir_a//[^-a-zA-Z0-9]/_}"
 	dir_b="${dir_b//[^-a-zA-Z0-9]/_}"
-	echo "${dir_a_info}" > "${write_path}/${dir_a}.txt"
-	echo "${dir_b_info}" > "${write_path}/${dir_b}.txt"
-	echo "${diff}" > "${write_path}/${dir_a}---${dir_b}.diff"
+	if [[ "${diff_name}" == "" ]] ; then
+		diff_path="${write_path}/${dir_a}---${dir_b}.diff"
+	else
+		diff_name="${diff_name//[^-a-zA-Z0-9]/_}"
+		diff_path="${write_path}/${diff_name}.diff"
+	fi
+	echo "${dir_a_info}" > "${write_path}/a-${dir_a}.txt"
+	echo "${dir_b_info}" > "${write_path}/b-${dir_b}.txt"
+	echo "${diff}" > "${diff_path}"
 fi
 
 if [ "${diff}" != "" ] ; then

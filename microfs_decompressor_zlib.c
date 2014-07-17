@@ -24,13 +24,11 @@
 
 #include <linux/zlib.h>
 
-static int decompressor_zlib_create(struct microfs_sb_info* sbi, char* dd)
+static int decompressor_zlib_create(struct microfs_sb_info* sbi, void** dest)
 {
 	struct z_stream_s* zstrm = kmalloc(sizeof(*zstrm), GFP_KERNEL);
 	if (!zstrm)
 		goto err_mem_zstrm;
-	
-	(void)dd;
 	
 	zstrm->workspace = kmalloc(zlib_inflate_workspacesize(), GFP_KERNEL);
 	if (!zstrm->workspace)
@@ -42,7 +40,7 @@ static int decompressor_zlib_create(struct microfs_sb_info* sbi, char* dd)
 	zstrm->avail_out = 0;
 	zlib_inflateInit(zstrm);
 	
-	sbi->si_decompressor_data = zstrm;
+	*dest = zstrm;
 	
 	return 0;
 	
@@ -52,10 +50,9 @@ err_mem_zstrm:
 	return -ENOMEM;
 }
 
-static int decompressor_zlib_destroy(struct microfs_sb_info* sbi)
+static int decompressor_zlib_destroy(struct microfs_sb_info* sbi, void* data)
 {
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
-	sbi->si_decompressor_data = NULL;
+	struct z_stream_s* zstrm = data;
 	
 	if (zstrm) {
 		zlib_inflateEnd(zstrm);
@@ -66,9 +63,9 @@ static int decompressor_zlib_destroy(struct microfs_sb_info* sbi)
 	return 0;
 }
 
-static int decompressor_zlib_reset(struct microfs_sb_info* sbi)
+static int decompressor_zlib_reset(struct microfs_sb_info* sbi, void* data)
 {
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	struct z_stream_s* zstrm = data;
 	
 	if (unlikely(zlib_inflateReset(zstrm) != Z_OK)) {
 		pr_err("failed to reset the inflate stream: %s\n", zstrm->msg);
@@ -80,9 +77,10 @@ static int decompressor_zlib_reset(struct microfs_sb_info* sbi)
 	return 0;
 }
 
-static int decompressor_zlib_exceptionally_begin(struct microfs_sb_info* sbi)
+static int decompressor_zlib_exceptionally_begin(struct microfs_sb_info* sbi,
+	void* data)
 {
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	struct z_stream_s* zstrm = data;
 	
 	sbi->si_filedatabuf.d_offset = MICROFS_MAXIMGSIZE - 1;
 	sbi->si_filedatabuf.d_used = 0;
@@ -95,9 +93,9 @@ static int decompressor_zlib_exceptionally_begin(struct microfs_sb_info* sbi)
 }
 
 static int decompressor_zlib_nominally_begin(struct microfs_sb_info* sbi,
-	struct page** pages, __u32 npages)
+	void* data, struct page** pages, __u32 npages)
 {
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	struct z_stream_s* zstrm = data;
 	
 	(void)pages;
 	(void)npages;
@@ -110,16 +108,17 @@ static int decompressor_zlib_nominally_begin(struct microfs_sb_info* sbi,
 	return 0;
 }
 
-static int decompressor_zlib_copy_nominally_needpage(struct microfs_sb_info* sbi)
+static int decompressor_zlib_copy_nominally_needpage(struct microfs_sb_info* sbi,
+	void* data)
 {
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	struct z_stream_s* zstrm = data;
 	return zstrm->avail_out == 0;
 }
 
 static int decompressor_zlib_copy_nominally_utilizepage(struct microfs_sb_info* sbi,
-	struct page* page)
+	void* data, struct page* page)
 {
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	struct z_stream_s* zstrm = data;
 	if (page) {
 		zstrm->avail_out = PAGE_CACHE_SIZE;
 		zstrm->next_out = kmap(page);
@@ -130,20 +129,21 @@ static int decompressor_zlib_copy_nominally_utilizepage(struct microfs_sb_info* 
 }
 
 static int decompressor_zlib_copy_nominally_releasepage(struct microfs_sb_info* sbi,
-	struct page* page)
+	void* data, struct page* page)
 {
 	(void)sbi;
+	(void)data;
 	kunmap(page);
 	return 0;
 }
 
 static int decompressor_zlib_consumebhs(struct microfs_sb_info* sbi,
-	struct buffer_head** bhs, __u32 nbhs, __u32* length,
+	void* data, struct buffer_head** bhs, __u32 nbhs, __u32* length,
 	__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr)
 {
 	int err = 0;
 	
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	struct z_stream_s* zstrm = data;
 	
 	pr_spam("decompressor_zlib_consumebhs: sbi=0x%p, bhs=0x%p, nbhs=%u\n", sbi, bhs, nbhs);
 	pr_spam("decompressor_zlib_consumebhs: ztream=0x%p\n", zstrm);
@@ -191,9 +191,10 @@ static int decompressor_zlib_consumebhs(struct microfs_sb_info* sbi,
 		*inflated += zstrm->total_out;
 		pr_spam("decompressor_zlib_consumebhs: at streams end, %u bytes inflated, %u bytes total",
 			(__u32)zstrm->total_out, *inflated);
-		sbi->si_decompressor->dc_reset(sbi);
+		sbi->si_decompressor->dc_reset(sbi, data);
 	} else if (*implerr != Z_OK) {
-		pr_err("decompressor_zlib_consumebhs: failed to inflate data: %s\n", zstrm->msg);
+		pr_err("decompressor_zlib_consumebhs: failed to inflate data: (%d) %s\n",
+			*implerr, zstrm->msg);
 		err = -EIO;
 	}
 	
@@ -201,9 +202,9 @@ static int decompressor_zlib_consumebhs(struct microfs_sb_info* sbi,
 }	
 
 static int decompressor_zlib_continue(struct microfs_sb_info* sbi,
-	int err, int implerr, __u32 length, int more_avail_out)
+	void* data, int err, int implerr, __u32 length, int more_avail_out)
 {
-	struct z_stream_s* zstrm = sbi->si_decompressor_data;
+	struct z_stream_s* zstrm = data;
 	return !err && (
 		implerr == Z_OK || (
 			implerr == Z_STREAM_END && (
@@ -216,9 +217,10 @@ static int decompressor_zlib_continue(struct microfs_sb_info* sbi,
 }
 
 static int decompressor_zlib_end(struct microfs_sb_info* sbi,
-	int* err, int* implerr, __u32* decompressed)
+	void* data, int* err, int* implerr, __u32* decompressed)
 {
 	(void)sbi;
+	(void)data;
 	(void)decompressed;
 	
 	if (*err) {
@@ -235,6 +237,8 @@ static int decompressor_zlib_end(struct microfs_sb_info* sbi,
 const struct microfs_decompressor decompressor_zlib = {
 	.dc_info = &libinfo_zlib,
 	.dc_compiled = 1,
+	.dc_data_init = microfs_decompressor_data_init_noop,
+	.dc_data_exit = microfs_decompressor_data_exit_noop,
 	.dc_create = decompressor_zlib_create,
 	.dc_destroy = decompressor_zlib_destroy,
 	.dc_reset = decompressor_zlib_reset,
