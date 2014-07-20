@@ -126,6 +126,7 @@ int decompressor_lz_copy_nominally_utilizepage(struct microfs_sb_info* sbi,
 	void* data, struct page* page)
 {
 	(void)sbi;
+	(void)data;
 	(void)page;
 	return 0;
 }
@@ -233,7 +234,7 @@ int decompressor_lz_end(struct microfs_sb_info* sbi, void* data,
 		for (i = 0, avail = 0, offset = 0;
 				i < lzdata->lz_npages && outputsz > 0;
 				i += 1, offset += PAGE_CACHE_SIZE) {
-			void* page_data = kmap(lzdata->lz_pages[i]);
+			void* page_data = kmap_atomic(lzdata->lz_pages[i]);
 			avail = min_t(__u32, outputsz, PAGE_CACHE_SIZE);
 			
 			pr_spam("decompressor_lz_end: i=%d, offset=%u, avail=%u, outputsz=%u\n",
@@ -242,7 +243,7 @@ int decompressor_lz_end(struct microfs_sb_info* sbi, void* data,
 			outputsz -= avail;
 			
 			memcpy(page_data, output + offset, avail);
-			kunmap(lzdata->lz_pages[i]);
+			kunmap_atomic(page_data);
 		}
 	} else {
 		/* Called by %__microfs_copy_filedata_exceptionally. The data

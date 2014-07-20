@@ -24,7 +24,7 @@
 
 #include <linux/lzo.h>
 
-int decompressor_lzo_create(struct microfs_sb_info* sbi, void** dest)
+static int decompressor_lzo_create(struct microfs_sb_info* sbi, void** dest)
 {
 	return decompressor_lz_create(sbi, dest, lzo1x_worst_compress(sbi->si_blksz));
 }

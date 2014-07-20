@@ -270,6 +270,11 @@ int microfs_decompressor_data_exit_noop(struct microfs_sb_info* sbi);
  */
 int microfs_decompressor_data_singleton_create(struct microfs_sb_info* sbi);
 
+/* Multiple decompressor data instances available using
+ * percpu pointers.
+ */
+int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi);
+
 /* Multiple decompressor data instances available. If no
  * instances are available and no new ones can be created,
  * the calling thread will have to wait for another thread

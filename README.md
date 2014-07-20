@@ -150,6 +150,11 @@ options when an image is mounted.
    buffer for dentries/inodes.
  * `decompressor_data_creator=%s`: How microfs should handle
    decompressor data. See the section "Decompressor data" below.
+   Valid values are:
+ ** `singleton`
+ ** `percpu`
+ ** `queue`
+ ** `global`
  * `debug_mountid=%u`: Specify a mount ID which can help with
    debugging. It will printed as an INFO log message when
    the image is mounted.
@@ -171,12 +176,14 @@ simultaneous requests to decompress data.
 decompressor data and access to it:
 
  * `microfs_decompressor_data_singleton`: One instance of decompressor
-   data per mounted image, protected by a mutex.
+   data per mounted image.
+ * `microfs_decompressor_data_percpu`: One instance per cpu/core per
+   mounted image using percpu pointers.
  * `microfs_decompressor_data_queue`: Multiple instances of decompressor
    data per mounted image, with a maximum of `2 * num_online_cpus()`
-   instances, protected by a mutex and a wait queue.
+   instances.
  * `microfs_decompressor_data_global`: One global instance of decompressor
-   data used by all mounted images, protected by a mutex.
+   data used by all mounted images.
 
 ## Testing microfs
 

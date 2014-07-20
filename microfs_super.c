@@ -111,6 +111,9 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 				if (strcmp(creator, "singleton") == 0) {
 					mount_opts->mo_decompressor_data_creator
 						= microfs_decompressor_data_singleton_create;
+				} else if (strcmp(creator, "percpu") == 0) {
+					mount_opts->mo_decompressor_data_creator
+						= microfs_decompressor_data_percpu_create;
 				} else if (strcmp(creator, "queue") == 0) {
 					mount_opts->mo_decompressor_data_creator
 						= microfs_decompressor_data_queue_create;

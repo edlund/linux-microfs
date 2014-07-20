@@ -25,6 +25,7 @@
 #include <linux/xz.h>
 
 struct decompressor_xz_data {
+	void* xz_pageaddr;
 	struct xz_dec* xz_state;
 	struct xz_buf xz_buf;
 	__u32 xz_totalout;
@@ -154,6 +155,7 @@ static int decompressor_xz_copy_nominally_needpage(struct microfs_sb_info* sbi,
 	void* data)
 {
 	struct decompressor_xz_data* xzdat = data;
+	(void)sbi;
 	return xzdat->xz_buf.out_pos == xzdat->xz_buf.out_size;
 }
 
@@ -162,7 +164,8 @@ static int decompressor_xz_copy_nominally_utilizepage(struct microfs_sb_info* sb
 {
 	struct decompressor_xz_data* xzdat = data;
 	if (page) {
-		xzdat->xz_buf.out = kmap(page);
+		xzdat->xz_pageaddr = kmap_atomic(page);
+		xzdat->xz_buf.out = xzdat->xz_pageaddr;
 		xzdat->xz_buf.out_size = PAGE_CACHE_SIZE;
 		xzdat->xz_buf.out_pos = 0;
 	} else {
@@ -174,9 +177,10 @@ static int decompressor_xz_copy_nominally_utilizepage(struct microfs_sb_info* sb
 static int decompressor_xz_copy_nominally_releasepage(struct microfs_sb_info* sbi,
 	void* data, struct page* page)
 {
+	struct decompressor_xz_data* xzdat = data;
 	(void)sbi;
-	(void)data;
-	kunmap(page);
+	(void)page;
+	kunmap_atomic(xzdat->xz_pageaddr);
 	return 0;
 }
 

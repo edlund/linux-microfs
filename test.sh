@@ -57,6 +57,7 @@ done
 if [[ ${#data_creators[@]} -eq 0 ]] ; then
 	data_creators=(
 		"singleton"
+		"percpu"
 		"queue"
 		"global"
 	)
