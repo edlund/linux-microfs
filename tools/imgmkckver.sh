@@ -30,11 +30,12 @@ extract_arg=""
 img_src=""
 rand_seed="`date +%s`"
 checksum_prog=""
+data_acquirer=""
 data_creator=""
 stress_test=0
 reuse_forbidden=0
 
-options="t:m:c:s:d:p:x:i:r:C:D:SF"
+options="t:m:c:s:d:p:x:i:r:C:A:D:SF"
 while getopts $options option
 do
 	case $option in
@@ -48,6 +49,7 @@ do
 		i ) img_src=$OPTARG ;;
 		r ) rand_seed=$OPTARG ;;
 		C ) checksum_prog=$OPTARG ;;
+		A ) data_acquirer=$OPTARG ;;
 		D ) data_creator=$OPTARG ;;
 		S ) stress_test=1 ;;
 		F ) reuse_forbidden=1 ;;
@@ -57,7 +59,8 @@ done
 if [[ ! -d "${src_dir}" || ! -d "${dest_dir}" || \
 		-z "${mk_cmd}" || -z "${ck_cmd}" || -z "${img_src}" || \
 		-z "${mount_type}" || ! ( "${rand_seed}" =~ ^[0-9]+$ ) || \
-		-z "${checksum_prog}" || -z "${data_creator}" ]] ; then
+		-z "${checksum_prog}" || -z "${data_creator}" || \
+		-z "${data_acquirer}" ]] ; then
 	cat <<EOF
 Usage: `basename $0` -t:m:c:s:d:x:k:C:D: [-r:SF]
 
@@ -74,6 +77,7 @@ it against its source, all in one (long) command.
     -i <str>    the source of -s, the command that created it
     -r <int>    seed for random generators (only matters with -S)
     -C <str>    checksum program to use
+    -A <str>    data acquirer to use (see microfs_decompressor_data_manager_acquire_*)
     -D <str>    data creator to use (see microfs_decompressor_data_*)
     -S          stress test (very time and resource consuming)
     -F          do not use existing image files, always create them
@@ -106,8 +110,14 @@ fi
 img_mount="${img_file}.mount"
 img_mountid="`date +%s`"
 img_mountopts=(
+	"loop"
+	"debug_mountid=${img_mountid}"
+	"decompressor_data_acquirer=${data_acquirer}"
+	"decompressor_data_creator=${data_creator}"
+)
+img_mountopts=(
 	"-r"
-	"-o loop,debug_mountid=${img_mountid},decompressor_data_creator=${data_creator}"
+	"-o `implode "," ${img_mountopts[@]}`"
 	"-t ${mount_type}"
 )
 

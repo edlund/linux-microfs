@@ -128,6 +128,13 @@ struct microfs_sb_info {
 	struct microfs_decompressor_data* si_decompressor_data;
 };
 
+typedef int (*microfs_decompressor_data_creator)(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data);
+
+typedef int (*microfs_decompressor_data_acquirer)(struct microfs_sb_info* sbi,
+	char* dd, struct microfs_decompressor_data** dest,
+	microfs_decompressor_data_creator creator);
+
 /* A data block decompression abstraction.
  */
 struct microfs_decompressor {
@@ -135,10 +142,12 @@ struct microfs_decompressor {
 	const struct libinfo* dc_info;
 	/* Decompressor compiled? */
 	const int dc_compiled;
-	/* Called by microfs_decompressor_init(). */
-	int (*dc_data_init)(struct microfs_sb_info* sbi, void* dd);
+	/* Called by microfs_decompressor_data_manager_get(). */
+	int (*dc_data_init)(struct microfs_sb_info* sbi, void* dd,
+		struct microfs_decompressor_data* data);
 	/* Cleans up after %dc_data_init(). */
-	int (*dc_data_exit)(struct microfs_sb_info* sbi);
+	int (*dc_data_exit)(struct microfs_sb_info* sbi,
+		struct microfs_decompressor_data* data);
 	/* Allocate the necessary private data. */
 	int (*dc_create)(struct microfs_sb_info* sbi, void** dest);
 	/* Free private data, see %microfs_decompressor_data.dd_destroy(). */
@@ -171,18 +180,92 @@ struct microfs_decompressor {
 };
 
 /* %microfs_decompressor private data and access methods.
+ * 
+ * Each decompressor needs some private data in order to do
+ * its job, and %microfs_decompressor_data is what is used
+ * to store this data. Traditionally each mounted image
+ * received its own instance of %microfs_decompressor_data,
+ * where the actual data fed to the decompressor could be
+ * stored in different ways (singleton, queue, percpu).
+ * 
+ * That solution works well but tends to use a big amount
+ * of memory for buffers when there are many images mounted
+ * with big block sizes at the same time.
+ * 
+ * To allow users (which know that they will use the same
+ * decompressor and block size for multiple images that will
+ * be mounted simultaneously) to save memory one can mount
+ * them and request that they use "public" decompressor data.
+ * 
+ * Public decompressor data is shared among all images mounted
+ * with the same options, the images will then compete for
+ * access to the decompressor data when they need to have blocks
+ * decompressed.
+ * 
+ * Private decompressor data is used exclusively for the image
+ * that it is created for, meaning that mounting images with
+ * options that could allow them share decompressor data will
+ * still result in each mounted image getting its own data.
+ * 
+ * %microfs_decompressor_init(%sbi, %dd, %acquirer, %creator)
+ * is used to get a decompressor instance for a %microfs_sb_info
+ * instance. It needs two callbacks, %acquirer and %creator.
+ * 
+ * %acquirer deals with getting either a private or a public
+ * decompressor data instance (as explained above). It can
+ * be one of:
+ * 
+ * - %microfs_decompressor_data_manager_acquire_private()
+ * - %microfs_decompressor_data_manager_acquire_public()
+ * 
+ * %creator deals with how the data that the decompressor
+ * actually need (that is; its buffers, state and other
+ * decompressor specific stuff) is managed. By using different
+ * creators one can control how microfs will behave during
+ * concurrent requests for decompression (the chosen %acquirer
+ * will obviously also play a role here). Creator can be one
+ * of:
+ * 
+ * - %microfs_decompressor_data_singleton_create()
+ * - %microfs_decompressor_data_percpu_create()
+ * - %microfs_decompressor_data_queue_create()
+ * 
+ * %acquirer and %creator can be mixed up according to user
+ * need. The following combination could be used to get a
+ * decompression behaviour as close as possible to that of
+ * cramfs:
+ * 
+ * > %acquirer = %microfs_decompressor_data_manager_acquire_public()
+ * > %creator = %microfs_decompressor_data_singleton_create()
+ * 
+ * When using public decompressor data, it is worth remembering
+ * that %microfs_decompressor, %acquirer, %creator and block size
+ * for the mounted images must be the same in order to have them
+ * successfully share a decompressor data instance.
  */
 struct microfs_decompressor_data {
+	/* The block size used. */
+	unsigned int dd_blksz;
+	/* Number of users (mounted images) of this decompressor data. */
+	unsigned int dd_users;
+	/* List of public instances, if this instance is public. */
+	struct list_head dd_sharelist;
+	/* The decompressor that needs this decompressor data. */
+	const struct microfs_decompressor* dd_decompressor;
+	/* The %microfs_decompressor_data_creator that created this instance. */
+	microfs_decompressor_data_creator dd_creator;
 	/* Decompressor private data, see %dd_get() and %dd_put(). */
 	void* dd_private;
 	/* Decompressor info from the image. */
 	void* dd_info;
-	/* Get decompressor data. */
-	void (*dd_get)(struct microfs_sb_info* sbi, void** dest);
-	/* Put decompressor data. */
-	void (*dd_put)(struct microfs_sb_info* sbi, void** src);
+	/* Get the decompressor data for use. */
+	int (*dd_get)(struct microfs_sb_info* sbi, void** dest);
+	/* Put the decompressor data after use. */
+	int (*dd_put)(struct microfs_sb_info* sbi, void** src);
 	/* Destroy decompressor data. */
-	void (*dd_destroy)(struct microfs_sb_info* sbi);
+	void (*dd_destroy)(struct microfs_sb_info* sbi, void* data);
+	/* Release decompressor data, might not %dd_destroy() it. */
+	void (*dd_release)(struct microfs_sb_info* sbi);
 };
 
 extern const struct microfs_decompressor decompressor_zlib;
@@ -245,35 +328,32 @@ void* __microfs_read(struct super_block* sb,
  */
 int __microfs_readpage(struct file* file, struct page* page);
 
-typedef int (*microfs_decompressor_data_creator)(struct microfs_sb_info* sbi);
-
-/* Init the decompressor for %sbi. %creator can be one of:
+/* Init a decompressor for %sbi.
  * 
- * - %microfs_decompressor_data_singleton_create()
- * - %microfs_decompressor_data_queue_create()
- * - %microfs_decompressor_data_global_create()
- * 
- * and determines how decompressor data (state, buffers and
- * such things) is handled.
+ * See %microfs_decompressor_data.
  */
 int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd,
+	microfs_decompressor_data_acquirer acquirer,
 	microfs_decompressor_data_creator creator);
 
 /* Used by decompressors without any persistant decompressor
  * data.
  */
-int microfs_decompressor_data_init_noop(struct microfs_sb_info* sbi, void* dd);
-int microfs_decompressor_data_exit_noop(struct microfs_sb_info* sbi);
+int microfs_decompressor_data_init_noop(struct microfs_sb_info* sbi, void* dd,
+	struct microfs_decompressor_data* data);
+int microfs_decompressor_data_exit_noop(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data);
 
-/* A single decompressor data instance per mounted image
- * available, it is simply protected by a mutex.
+/* A single decompressor data instance.
  */
-int microfs_decompressor_data_singleton_create(struct microfs_sb_info* sbi);
+int microfs_decompressor_data_singleton_create(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data);
 
 /* Multiple decompressor data instances available using
  * percpu pointers.
  */
-int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi);
+int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data);
 
 /* Multiple decompressor data instances available. If no
  * instances are available and no new ones can be created,
@@ -282,11 +362,28 @@ int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi);
  * 
  * The maximum number of instances is 2 * num_online_cpus().
  */
-int microfs_decompressor_data_queue_create(struct microfs_sb_info* sbi);
+int microfs_decompressor_data_queue_create(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data);
 
-/* A single decompressor data instance used by all mounted images.
+/* init and exit for the decompressor data manager.
  */
-int microfs_decompressor_data_global_create(struct microfs_sb_info* sbi);
+void microfs_decompressor_data_manager_init(void);
+void microfs_decompressor_data_manager_exit(void);
+
+/* Acquire a private instance of decompressor data, i.e. an
+ * instance that will only be used by a single mounted image.
+ */
+int microfs_decompressor_data_manager_acquire_private(struct microfs_sb_info* sbi,
+	char* dd, struct microfs_decompressor_data** dest,
+	microfs_decompressor_data_creator creator);
+
+/* Acquire a public instance of decompressor data, i.e. an
+ * instance that will be used by all mounted images which
+ * requests public decompressor data of the same type.
+ */
+int microfs_decompressor_data_manager_acquire_public(struct microfs_sb_info* sbi,
+	char* dd, struct microfs_decompressor_data** dest,
+	microfs_decompressor_data_creator creator);
 
 /* %microfs_decompressor op implementations used by LZ4
  * and LZO.
@@ -321,6 +418,11 @@ int decompressor_lz_end(struct microfs_sb_info* sbi, void* data,
 	decompressor_lz_end_consumer consumer);
 
 #endif
+
+/* Get the insert ID for this module insertion. Used by tests
+ * to have additional information written to the syslog.
+ */
+int __debug_insid(void);
 
 #endif
 

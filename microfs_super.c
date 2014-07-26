@@ -20,6 +20,7 @@
 
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/parser.h>
 
 MODULE_DESCRIPTION("microfs - Minimally Improved Compressed Read Only File System");
@@ -36,11 +37,21 @@ MODULE_ALIAS_FS("microfs");
 #error "pointless build, see README"
 #endif
 
+static int debug_insid = 0;
+module_param(debug_insid, int, 0000);
+MODULE_PARM_DESC(debug_insid, "Debug ID for the module insertion");
+
+int __debug_insid(void)
+{
+	return debug_insid;
+}
+
 static const struct super_operations microfs_s_ops;
 
 enum {
 	Opt_metadata_blkptrbufsz,
 	Opt_metadata_dentrybufsz,
+	Opt_decompressor_data_acquirer,
 	Opt_decompressor_data_creator,
 	Opt_debug_mountid,
 	Opt_debug_cksig
@@ -49,15 +60,17 @@ enum {
 static const match_table_t microfs_tokens = {
 	{ Opt_metadata_blkptrbufsz, "metadata_blkptrbufsz=%u" },
 	{ Opt_metadata_dentrybufsz, "metadata_dentrybufsz=%u" },
+	{ Opt_decompressor_data_acquirer, "decompressor_data_acquirer=%s" },
 	{ Opt_decompressor_data_creator, "decompressor_data_creator=%s" },
 	{ Opt_debug_mountid, "debug_mountid=%u" },
-	{ Opt_debug_cksig, "debug_cksig" }
+	{ Opt_debug_cksig, "debug_cksig=%u" }
 };
 
 struct microfs_mount_options {
 	__u64 mo_metadata_blkptrbufsz;
 	__u64 mo_metadata_dentrybufsz;
 	microfs_decompressor_data_creator mo_decompressor_data_creator;
+	microfs_decompressor_data_acquirer mo_decompressor_data_acquirer;
 	int mo_debug_cksig;
 };
 
@@ -81,6 +94,7 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 {
 	char* part;
 	char* creator;
+	char* acquirer;
 	substring_t args[MAX_OPT_ARGS];
 	
 	(void)sbi;
@@ -106,6 +120,20 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 			OPT_SZ(metadata_blkptrbufsz);
 			OPT_SZ(metadata_dentrybufsz);
 			
+			case Opt_decompressor_data_acquirer:
+				acquirer = match_strdup(&args[0]);
+				if (strcmp(acquirer, "private") == 0) {
+					mount_opts->mo_decompressor_data_acquirer
+						= microfs_decompressor_data_manager_acquire_private;
+				} else if (strcmp(acquirer, "public") == 0) {
+					mount_opts->mo_decompressor_data_acquirer
+						= microfs_decompressor_data_manager_acquire_public;
+				} else {
+					pr_warn("unknown decompressor_data_acquirer requested"
+						" - the default will be used\n");
+				}
+				kfree(acquirer);
+				break;
 			case Opt_decompressor_data_creator:
 				creator = match_strdup(&args[0]);
 				if (strcmp(creator, "singleton") == 0) {
@@ -117,11 +145,8 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 				} else if (strcmp(creator, "queue") == 0) {
 					mount_opts->mo_decompressor_data_creator
 						= microfs_decompressor_data_queue_create;
-				} else if (strcmp(creator, "global") == 0) {
-					mount_opts->mo_decompressor_data_creator
-						= microfs_decompressor_data_global_create;
 				} else {
-					pr_warn("unknown Opt_decompressor_data_creator requested"
+					pr_warn("unknown decompressor_data_creator requested"
 						" - the default will be used\n");
 				}
 				kfree(creator);
@@ -132,7 +157,10 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 				pr_info("debug_mountid=%d\n", option);
 				break;
 			case Opt_debug_cksig:
-				mount_opts->mo_debug_cksig = 1;
+				if (match_int(&args[0], &option))
+					return 0;
+				mount_opts->mo_debug_cksig = 1 && option;
+				break;
 			default:
 				return 0;
 			
@@ -214,6 +242,7 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 	mount_opts.mo_metadata_blkptrbufsz = PAGE_CACHE_SIZE * 2;
 	mount_opts.mo_metadata_dentrybufsz = PAGE_CACHE_SIZE * 2;
 	mount_opts.mo_decompressor_data_creator = microfs_decompressor_data_singleton_create;
+	mount_opts.mo_decompressor_data_acquirer = microfs_decompressor_data_manager_acquire_private;
 	mount_opts.mo_debug_cksig = 0;
 	
 	if (!microfs_parse_options(data, sbi, &mount_opts)) {
@@ -267,7 +296,10 @@ sb_retry:
 			err = -EINVAL;
 			goto err_sb;
 		}
-		pr_devel("superblock signature is ok\n");
+		if (__debug_insid()) {
+			pr_info("[insid=%d] microfs_fill_super:"
+				" good superblock signature\n", __debug_insid());
+		}
 	}
 	
 	if (sb_unsupportedflags(msb)) {
@@ -329,15 +361,8 @@ sb_retry:
 			mount_opts.mo_metadata_dentrybufsz, "sbi->si_metadata_dentrybuf")) < 0)
 		goto err_metadata_dentrybuf;
 	
-	sbi->si_decompressor_data = kzalloc(sizeof(*sbi->si_decompressor_data), GFP_KERNEL);
-	if (!sbi->si_decompressor_data) {
-		pr_err("failed to alloc the decompressor data\n");
-		err = -ENOMEM;
-		goto err_decompressor_alloc;
-	}
-	
 	err = microfs_decompressor_init(sbi, bh->b_data + sb_padding + sizeof(*msb),
-		mount_opts.mo_decompressor_data_creator);
+		mount_opts.mo_decompressor_data_acquirer, mount_opts.mo_decompressor_data_creator);
 	if (err < 0) {
 		pr_err("failed to init the decompressor\n");
 		goto err_decompressor_init;
@@ -367,9 +392,8 @@ sb_retry:
 err_root_offset:
 	/* Fall-through. */
 err_decompressor_init:
-	/* Fall-through. */
-err_decompressor_alloc:
-	kfree(sbi->si_decompressor_data);
+	if (sbi->si_decompressor_data)
+		sbi->si_decompressor_data->dd_release(sbi);
 err_metadata_dentrybuf:
 	destroy_data_buffer(&sbi->si_metadata_dentrybuf);
 err_metadata_blkptrbuf:
@@ -409,13 +433,9 @@ static void microfs_put_super(struct super_block* sb)
 	destroy_data_buffer(&sbi->si_metadata_blkptrbuf);
 	destroy_data_buffer(&sbi->si_metadata_dentrybuf);
 	
-	if (sbi->si_decompressor)
-		WARN_ON(sbi->si_decompressor->dc_data_exit(sbi));
-	
 	if (sbi->si_decompressor_data)
-		sbi->si_decompressor_data->dd_destroy(sbi);
+		sbi->si_decompressor_data->dd_release(sbi);
 	
-	kfree(sbi->si_decompressor_data);
 	sbi->si_decompressor_data = NULL;
 	sbi->si_decompressor = NULL;
 	
@@ -441,6 +461,9 @@ static int microfs_statfs(struct dentry* dentry, struct kstatfs* buf)
 	buf->f_fsid.val[1] = (__u32)(dev_id >> 32);
 	buf->f_namelen = MICROFS_MAXNAMELEN;
 	
+	if (__debug_insid())
+		pr_info("[insid=%d] microfs_statfs: ok\n", __debug_insid());
+	
 	return 0;
 }
 
@@ -462,20 +485,25 @@ static int __init microfs_init(void)
 {
 	int err;
 	
-	pr_devel("microfs_init\n");
+	if (__debug_insid())
+		pr_info("[insid=%d] microfs_init\n", __debug_insid());
+	
 	pr_info("microfs comes with ABSOLUTELY NO WARRANTY;"
 		" without even the implied warranty of MERCHANTABILITY"
 		" or FITNESS FOR A PARTICULAR PURPOSE. See the GNU"
 		" General Public License for more details.\n");
 	
 	err = register_filesystem(&microfs_fs_type);
+	microfs_decompressor_data_manager_init();
 	
 	return err;
 } module_init(microfs_init);
 
 static void __exit microfs_exit(void)
 {
+	microfs_decompressor_data_manager_exit();
 	unregister_filesystem(&microfs_fs_type);
-	pr_devel("microfs_exit\n");
+	if (__debug_insid())
+		pr_info("[insid=%d] microfs_exit\n", __debug_insid());
 } module_exit(microfs_exit);
 

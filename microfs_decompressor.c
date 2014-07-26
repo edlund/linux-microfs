@@ -35,6 +35,7 @@ static const struct microfs_decompressor* decompressors[] = {
 };
 
 int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd,
+	microfs_decompressor_data_acquirer acquirer,
 	microfs_decompressor_data_creator creator)
 {
 	int i;
@@ -67,33 +68,12 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd,
 		goto err;
 	}
 	
-	err = decompressors[i]->dc_data_init(sbi, dd);
-	if (err) {
-		pr_err("%s: could not init the decompressor data",
-			decompressors[i]->dc_info->li_name);
-		goto err;
-	}
-	
 	sbi->si_decompressor = decompressors[i];
+	sbi->si_decompressor_data = NULL;
 	
-	return creator(sbi);
+	return acquirer(sbi, dd, &sbi->si_decompressor_data, creator);
 	
 err:
 	return err;
-}
-
-int microfs_decompressor_data_init_noop(struct microfs_sb_info* sbi, void* dd)
-{
-	(void)sbi;
-	(void)dd;
-	
-	return 0;
-}
-
-int microfs_decompressor_data_exit_noop(struct microfs_sb_info* sbi)
-{
-	(void)sbi;
-	
-	return 0;
 }
 

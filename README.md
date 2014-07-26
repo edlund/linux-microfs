@@ -154,7 +154,11 @@ options when an image is mounted.
  ** `singleton`
  ** `percpu`
  ** `queue`
- ** `global`
+ * `decompressor_data_acquirer=%s`: How microfs should acquire
+   an instance of decompressor data. See the section "Decompressor
+   data" below. Valid values are:
+ ** `private`
+ ** `public`
  * `debug_mountid=%u`: Specify a mount ID which can help with
    debugging. It will printed as an INFO log message when
    the image is mounted.
@@ -167,23 +171,12 @@ An example: `mount -o decompressor_data_creator=queue ...`.
 
 "decompressor data" is basically what a specific decompressor
 needs to be able to handle compressed blocks. It is usually internal
-state and buffers for the decompressor in question. As such,
-an instance of decompressor data must be protected from concurrent
-access in order to keep its state sane when there are several
-simultaneous requests to decompress data.
-
-`microfs` provides a couple of different ways to deal with
-decompressor data and access to it:
-
- * `microfs_decompressor_data_singleton`: One instance of decompressor
-   data per mounted image.
- * `microfs_decompressor_data_percpu`: One instance per cpu/core per
-   mounted image using percpu pointers.
- * `microfs_decompressor_data_queue`: Multiple instances of decompressor
-   data per mounted image, with a maximum of `2 * num_online_cpus()`
-   instances.
- * `microfs_decompressor_data_global`: One global instance of decompressor
-   data used by all mounted images.
+state and buffers for the decompressor in question. This topic
+is a little complicated as microfs offers many options to allow
+its user to tweak how it is handled. It is documented in `microfs.h`,
+look for the doctag for `struct microfs_decompressor_data` to learn
+more. The default behaviour will (hopefully) be good enough for
+most people.
 
 ## Testing microfs
 

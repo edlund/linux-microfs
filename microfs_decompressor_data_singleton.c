@@ -23,7 +23,7 @@ struct microfs_decompressor_data_singleton {
 	struct mutex dc_mutex;
 };
 
-static void microfs_decompressor_data_singleton_get(struct microfs_sb_info* sbi,
+static int microfs_decompressor_data_singleton_get(struct microfs_sb_info* sbi,
 	void** dest)
 {
 	struct microfs_decompressor_data_singleton* singleton = sbi
@@ -31,9 +31,11 @@ static void microfs_decompressor_data_singleton_get(struct microfs_sb_info* sbi,
 	BUG_ON(*dest != NULL);
 	mutex_lock(&singleton->dc_mutex);
 	*dest = singleton->dc_data;
+	
+	return 0;
 }
 
-static void microfs_decompressor_data_singleton_put(struct microfs_sb_info* sbi,
+static int microfs_decompressor_data_singleton_put(struct microfs_sb_info* sbi,
 	void** src)
 {
 	struct microfs_decompressor_data_singleton* singleton = sbi
@@ -41,22 +43,24 @@ static void microfs_decompressor_data_singleton_put(struct microfs_sb_info* sbi,
 	BUG_ON(*src == NULL);
 	mutex_unlock(&singleton->dc_mutex);
 	*src = NULL;
+	
+	return 0;
 }
 
-static void microfs_decompressor_data_singleton_destroy(struct microfs_sb_info* sbi)
+static void microfs_decompressor_data_singleton_destroy(struct microfs_sb_info* sbi,
+	void* data)
 {
-	struct microfs_decompressor_data_singleton* singleton = sbi
-		->si_decompressor_data->dd_private;
+	struct microfs_decompressor_data_singleton* singleton = data;
 	if (singleton) {
 		WARN_ON(sbi->si_decompressor->dc_destroy(sbi, singleton->dc_data));
 		kfree(singleton);
 	}
 }
 
-int microfs_decompressor_data_singleton_create(struct microfs_sb_info* sbi)
+int microfs_decompressor_data_singleton_create(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data)
 {
 	int err;
-	struct microfs_decompressor_data* dd = sbi->si_decompressor_data;
 	struct microfs_decompressor_data_singleton* singleton = kmalloc(
 		sizeof(*singleton), GFP_KERNEL);
 	
@@ -76,10 +80,10 @@ int microfs_decompressor_data_singleton_create(struct microfs_sb_info* sbi)
 		goto err_create;
 	}
 	
-	dd->dd_private = singleton;
-	dd->dd_get = microfs_decompressor_data_singleton_get;
-	dd->dd_put = microfs_decompressor_data_singleton_put;
-	dd->dd_destroy = microfs_decompressor_data_singleton_destroy;
+	data->dd_private = singleton;
+	data->dd_get = microfs_decompressor_data_singleton_get;
+	data->dd_put = microfs_decompressor_data_singleton_put;
+	data->dd_destroy = microfs_decompressor_data_singleton_destroy;
 	
 	return 0;
 	

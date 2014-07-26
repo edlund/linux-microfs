@@ -135,11 +135,10 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 		mutex_lock(&sbi->si_filedatabuf.d_mutex);
 	}
 	
-	sbi->si_decompressor_data->dd_get(sbi, &decompressor);
-	if (IS_ERR_OR_NULL(decompressor)) {
+	err = sbi->si_decompressor_data->dd_get(sbi, &decompressor);
+	if (err) {
 		pr_err("__microfs_copy_filedata_exceptionally:"
 			" failed to get the decompressor data\n");
-		err = decompressor? PTR_ERR(decompressor): -EIO;
 		goto err_dd_get;
 	}
 	
@@ -195,7 +194,7 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 	}
 	
 err_inflate:
-	sbi->si_decompressor_data->dd_put(sbi, &decompressor);
+	WARN_ON(sbi->si_decompressor_data->dd_put(sbi, &decompressor));
 err_dd_get:
 	if (bhs) {
 		mutex_unlock(&sbi->si_filedatabuf.d_mutex);
@@ -245,12 +244,11 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	
 	int strm_release = 0;
 	
-	sbi->si_decompressor_data->dd_get(sbi, &decompressor);
-	if (IS_ERR_OR_NULL(decompressor)) {
+	err = sbi->si_decompressor_data->dd_get(sbi, &decompressor);
+	if (err) {
 		pr_err("__microfs_copy_filedata_nominally:"
 			" failed to get the decompressor data\n");
-		err = decompressor? PTR_ERR(decompressor): -EIO;
-		goto err_inflate;
+		goto err_dd_get;
 	}
 	
 	pr_spam("__microfs_copy_filedata_nominally: offset=0x%x, length=%u\n",
@@ -305,7 +303,8 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	}
 	
 err_inflate:
-	sbi->si_decompressor_data->dd_put(sbi, &decompressor);
+	WARN_ON(sbi->si_decompressor_data->dd_put(sbi, &decompressor));
+err_dd_get:
 	return err;
 }
 

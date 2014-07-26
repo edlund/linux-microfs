@@ -31,7 +31,8 @@ struct decompressor_xz_data {
 	__u32 xz_totalout;
 };
 
-static int decompressor_xz_data_init(struct microfs_sb_info* sbi, void* dd)
+static int decompressor_xz_data_init(struct microfs_sb_info* sbi, void* dd,
+	struct microfs_decompressor_data* data)
 {
 	int err;
 	struct microfs_dd_xz* dd_xz = dd;
@@ -42,13 +43,13 @@ static int decompressor_xz_data_init(struct microfs_sb_info* sbi, void* dd)
 		goto err;
 	}
 	
-	sbi->si_decompressor_data->dd_info = kmalloc(sizeof(*dd_xz), GFP_KERNEL);
-	if (!sbi->si_decompressor_data->dd_info) {
+	data->dd_info = kmalloc(sizeof(*dd_xz), GFP_KERNEL);
+	if (!data->dd_info) {
 		err = -ENOMEM;
 		goto err;
 	}
 	
-	memcpy(sbi->si_decompressor_data->dd_info, dd_xz, sizeof(*dd_xz));
+	memcpy(data->dd_info, dd_xz, sizeof(*dd_xz));
 	
 	return 0;
 	
@@ -56,9 +57,12 @@ err:
 	return err;
 }
 
-static int decompressor_xz_data_exit(struct microfs_sb_info* sbi)
+static int decompressor_xz_data_exit(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data)
 {
-	kfree(sbi->si_decompressor_data->dd_info);
+	(void)sbi;
+	
+	kfree(data->dd_info);
 	
 	return 0;
 }

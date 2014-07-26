@@ -38,7 +38,7 @@ static inline int microfs_decompressor_data_queue_ceil(void)
 	return num_online_cpus() * 2;
 }
 
-static void microfs_decompressor_data_queue_get(struct microfs_sb_info* sbi,
+static int microfs_decompressor_data_queue_get(struct microfs_sb_info* sbi,
 	void** data)
 {
 	int err;
@@ -83,9 +83,11 @@ wait:
 		wait_event(queue->dc_waitqueue, !list_empty(&queue->dc_freelist));
 		continue;
 	}
+	
+	return 0;
 }
 
-static void microfs_decompressor_data_queue_put(struct microfs_sb_info* sbi,
+static int microfs_decompressor_data_queue_put(struct microfs_sb_info* sbi,
 	void** data)
 {
 	struct microfs_decompressor_data_queue_node* node;
@@ -107,13 +109,15 @@ static void microfs_decompressor_data_queue_put(struct microfs_sb_info* sbi,
 	wake_up(&queue->dc_waitqueue);
 	
 	*data = NULL;
+	
+	return 0;
 }
 
-static void microfs_decompressor_data_queue_destroy(struct microfs_sb_info* sbi)
+static void microfs_decompressor_data_queue_destroy(struct microfs_sb_info* sbi,
+	void* data)
 {
 	struct microfs_decompressor_data_queue_node* node;
-	struct microfs_decompressor_data_queue* queue = sbi
-		->si_decompressor_data->dd_private;
+	struct microfs_decompressor_data_queue* queue = data;
 	
 	if (queue) {
 		while (!list_empty(&queue->dc_freelist)) {
@@ -132,11 +136,10 @@ static void microfs_decompressor_data_queue_destroy(struct microfs_sb_info* sbi)
 	}
 }
 
-int microfs_decompressor_data_queue_create(struct microfs_sb_info* sbi)
+int microfs_decompressor_data_queue_create(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data)
 {
 	int err = 0;
-	
-	struct microfs_decompressor_data* dd = sbi->si_decompressor_data;
 	
 	struct microfs_decompressor_data_queue* queue = NULL;
 	struct microfs_decompressor_data_queue_node* node = NULL;
@@ -173,10 +176,10 @@ int microfs_decompressor_data_queue_create(struct microfs_sb_info* sbi)
 	queue->dc_avail = 1;
 	list_add(&node->dc_list, &queue->dc_freelist);
 	
-	dd->dd_private = queue;
-	dd->dd_get = microfs_decompressor_data_queue_get;
-	dd->dd_put = microfs_decompressor_data_queue_put;
-	dd->dd_destroy = microfs_decompressor_data_queue_destroy;
+	data->dd_private = queue;
+	data->dd_get = microfs_decompressor_data_queue_get;
+	data->dd_put = microfs_decompressor_data_queue_put;
+	data->dd_destroy = microfs_decompressor_data_queue_destroy;
 	
 	return 0;
 	

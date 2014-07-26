@@ -22,7 +22,7 @@ struct microfs_decompressor_data_percpu {
 	void* dc_data;
 };
 
-static void microfs_decompressor_data_percpu_get(struct microfs_sb_info* sbi,
+static int microfs_decompressor_data_percpu_get(struct microfs_sb_info* sbi,
 	void** dest)
 {
 	int cpu;
@@ -35,9 +35,11 @@ static void microfs_decompressor_data_percpu_get(struct microfs_sb_info* sbi,
 	cpu = get_cpu();
 	ptr = per_cpu_ptr(percpu, cpu);
 	*dest = ptr->dc_data;
+	
+	return 0;
 }
 
-static void microfs_decompressor_data_percpu_put(struct microfs_sb_info* sbi,
+static int microfs_decompressor_data_percpu_put(struct microfs_sb_info* sbi,
 	void** src)
 {
 	BUG_ON(*src == NULL);
@@ -45,14 +47,16 @@ static void microfs_decompressor_data_percpu_put(struct microfs_sb_info* sbi,
 	*src = NULL;
 	
 	put_cpu();
+	
+	return 0;
 }
 
-static void microfs_decompressor_data_percpu_destroy(struct microfs_sb_info* sbi)
+static void microfs_decompressor_data_percpu_destroy(struct microfs_sb_info* sbi,
+	void* data)
 {
 	int cpu;
 	struct microfs_decompressor_data_percpu* ptr;
-	struct microfs_decompressor_data_percpu __percpu* percpu = sbi
-		->si_decompressor_data->dd_private;
+	struct microfs_decompressor_data_percpu __percpu* percpu = data;
 	
 	if (percpu) {
 		for_each_possible_cpu(cpu) {
@@ -64,11 +68,11 @@ static void microfs_decompressor_data_percpu_destroy(struct microfs_sb_info* sbi
 	}
 }
 
-int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi)
+int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi,
+	struct microfs_decompressor_data* data)
 {
 	int cpu;
 	int err;
-	struct microfs_decompressor_data* dd = sbi->si_decompressor_data;
 	struct microfs_decompressor_data_percpu* ptr;
 	struct microfs_decompressor_data_percpu __percpu* percpu;
 	
@@ -80,8 +84,6 @@ int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi)
 		goto err_mem_percpu;
 	}
 	
-	dd->dd_private = (__force void*)percpu;
-	
 	for_each_possible_cpu(cpu) {
 		ptr = per_cpu_ptr(percpu, cpu);
 		err = sbi->si_decompressor->dc_create(sbi, &ptr->dc_data);
@@ -92,14 +94,15 @@ int microfs_decompressor_data_percpu_create(struct microfs_sb_info* sbi)
 		}
 	}
 	
-	dd->dd_get = microfs_decompressor_data_percpu_get;
-	dd->dd_put = microfs_decompressor_data_percpu_put;
-	dd->dd_destroy = microfs_decompressor_data_percpu_destroy;
+	data->dd_private = (__force void*)percpu;
+	data->dd_get = microfs_decompressor_data_percpu_get;
+	data->dd_put = microfs_decompressor_data_percpu_put;
+	data->dd_destroy = microfs_decompressor_data_percpu_destroy;
 	
 	return 0;
 	
 err_create:
-	microfs_decompressor_data_percpu_destroy(sbi);
+	microfs_decompressor_data_percpu_destroy(sbi, percpu);
 err_mem_percpu:
 	return err;
 }

@@ -31,9 +31,10 @@ conf_tempmnt="size=448M,nr_inodes=32k,mode=0755"
 conf_sizebudget="134217728"
 conf_filecontent="uncompressable"
 conf_randomseed="`date +%s`"
+conf_insid="`date +%s`"
 conf_checksum="sha512sum"
 
-data_creators=()
+data_options=()
 src_cmds=()
 
 options="PQSMm:b:f:r:C:d:c:"
@@ -49,19 +50,24 @@ do
 		f ) conf_filecontent=$OPTARG ;;
 		r ) conf_randomseed=$OPTARG ;;
 		C ) conf_checksum=$OPTARG ;;
-		d ) data_creators+=("${OPTARG}") ;;
+		d ) data_options+=("${OPTARG}") ;;
 		c ) src_cmds+=("${OPTARG}") ;;
 	esac
 done
 
-if [[ ${#data_creators[@]} -eq 0 ]] ; then
-	data_creators=(
+if [[ ${#data_options[@]} -eq 0 ]] ; then
+	data_options=(
 		"singleton"
 		"percpu"
 		"queue"
-		"global"
 	)
 fi
+
+data_options=("${data_options[@]/#/-D }")
+data_options=(
+	"${data_options[@]/%/ -A private}"
+	"${data_options[@]/%/ -A public}"
+)
 
 src_cmds+=(
 	"${script_dir}/tools/mkemptydir.sh"
@@ -85,15 +91,21 @@ _check_start_time=`date +%s`
 
 build_dir=$script_dir
 
+echo ""
 echo "$0: padding test? ${conf_paddingtest}"
 echo "$0: quick test? ${conf_quicktest}"
 echo "$0: stress test? ${conf_stresstest}"
 echo "$0: use tmpfs? ${conf_usetempmnt}"
+echo "$0: insert id is \"${conf_insid}\""
 echo "$0: random seed is \"${conf_randomseed}\""
 echo "$0: size budget is \"${conf_sizebudget}\""
 echo "$0: checksum program is \"${conf_checksum}\""
 echo "$0: libraries tested: `${script_dir}/microfslib | tr '\n' ' '`"
-echo "$0: data creators tested: ${data_creators[@]}"
+echo "$0: data options tested:"
+for data_option in "${data_options[@]}" ; do
+	echo "$0: => \"${data_option}\""
+done
+echo ""
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
 atexit_0 rm -rf "${temp_dir}"
@@ -188,7 +200,7 @@ check_util_mkholedir
 echo "$0: utility tests passed."
 echo "$0: running lkm and hostprog tests..."
 
-sudo insmod "${build_dir}/microfs.ko"
+sudo insmod "${build_dir}/microfs.ko" "debug_insid=${conf_insid}"
 atexit sudo rmmod microfs
 echo "$0: Kernel module loaded"
 
@@ -265,7 +277,39 @@ devtable_simple="${devtable_simple[@]}"
 devtable_mount "${devtable_simple_cmd}" "${devtable_simple}"
 devtable_mount "${devtable_host_cmd}" "${devtable_host}"
 
-# Try compiled compression libs with different block sizes.
+# Run highly specialized functional tests.
+test_debug_cksig=(
+	"\"${temp_dir}\""
+	"\"${conf_insid}\""
+)
+test_debug_cksig="debug_cksig.sh ${test_debug_cksig[@]}"
+test_decompressor_data_manager=(
+	"-d \"${temp_dir}\""
+	"-i \"${conf_insid}\""
+)
+test_decompressor_data_manager="decompressor_data_manager.sh ${test_decompressor_data_manager[@]}"
+test_statfs=(
+	"\"${temp_dir}\""
+	"\"${conf_insid}\""
+)
+test_statfs="statfs.sh ${test_statfs[@]}"
+
+spec_tests=(
+	"${test_debug_cksig}"
+	"${test_decompressor_data_manager}"
+	"${test_statfs}"
+)
+
+for spec_test in "${spec_tests[@]}" ; do
+	spec_test="${script_dir}/tests/${spec_test}"
+	echo "$0: running specialized test \"${spec_test}\"..."
+	eval "${spec_test}"
+	echo "$0: ... ok (`date +'%H:%M:%S'`)."
+	snore 1s 1 "$0: waiting for a new second"
+done
+
+# Run generic functional tests (compiled compression libs
+# with different block sizes working with different sources).
 "${script_dir}/microfslib" > "${temp_dir}/libs.txt"
 readarray -t compression_options < "${temp_dir}/libs.txt"
 
@@ -293,7 +337,7 @@ for src_cmd in "${src_cmds[@]}" ; do
 	src_dir="${src_cmd//[^-a-zA-Z0-9]/_}"
 	img_src="${temp_dir}/${src_dir}"
 	img_prefix="`basename \"${img_src}\"`-"
-	echo "$0: Running \"${src_cmd}\" to create \"${img_src}\"..."
+	echo "$0: running \"${src_cmd}\" to create \"${img_src}\"..."
 	eval "${src_cmd} \"${img_src}\""
 	echo "$0: ... ok, starting tests..."
 	
@@ -303,7 +347,7 @@ for src_cmd in "${src_cmds[@]}" ; do
 	for options in "${all_options[@]}" ; do
 		mk_cmd="${mk_path} ${options}"
 		ck_cmd="${ck_path} -v -e"
-		for data_creator in "${data_creators[@]}" ; do
+		for data_option in "${data_options[@]}" ; do
 			image_params=(
 				"-t microfs"
 				"-m \"${mk_cmd}\""
@@ -315,7 +359,7 @@ for src_cmd in "${src_cmds[@]}" ; do
 				"-i \"${src_cmd}\""
 				"-r \"${conf_randomseed}\""
 				"-C \"${conf_checksum}\""
-				"-D \"${data_creator}\""
+				"${data_option}"
 				"${conf_stresstest}"
 			)
 			image_cmd="${script_dir}/tools/imgmkckver.sh ${image_params[@]}"

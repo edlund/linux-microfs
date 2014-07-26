@@ -53,7 +53,7 @@ if [[ ! -f "${mki_std_log}" || ! -f "${mki_err_log}" || \
 	 ! ( "${mountid}" =~ ^[-a-zA-Z0-9]+$ ) || \
 	 -z "${suffix}" ]] ; then
 	cat <<EOF
-Usage: `basename $0` -t:l:
+Usage: `basename $0` -l:s:m:
 
 Perform more testing
 

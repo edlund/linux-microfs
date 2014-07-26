@@ -148,3 +148,10 @@ snore() {
 	done
 	echo ""
 }
+
+implode() {
+	local IFS="$1"
+	shift
+	echo "$*"
+}
+
