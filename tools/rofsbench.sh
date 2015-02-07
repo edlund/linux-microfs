@@ -16,9 +16,10 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+source "boilerplate.sh"
+
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
-source "${script_dir}/boilerplate.sh"
 
 # max: 2^27 + 2^26 + 2^25 bytes (224 MB), this is an approximate
 # max size for cramfs which leaves a comfortable 32 MB for

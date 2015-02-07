@@ -16,9 +16,10 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+source "boilerplate.sh"
+
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
-source "${script_dir}/boilerplate.sh"
 
 mount_type=""
 mk_cmd=""
@@ -102,7 +103,7 @@ if [[ ! -f "${img_file}" || $reuse_forbidden -eq 1 ]] ; then
 	eval "${mk_cmd} \"${src_dir}\" \"${img_file}\" 1>\"${cmd_log}.mk.1\" 2>\"${cmd_log}.mk.2\""
 	eval "${ck_cmd} \"${img_file}\" 1>\"${cmd_log}.ck.1\" 2>\"${cmd_log}.ck.2\""
 	if [ -d "${extract_dir}" ] ; then
-		eval "${script_dir}/cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\" -c \"${checksum_prog}\""
+		eval "cmptrees.sh -a \"${src_dir}\" -b \"${extract_dir}\" -c \"${checksum_prog}\""
 		rm -rf "${extract_dir}"
 	fi
 fi
@@ -156,9 +157,16 @@ cmptreeopts=(
 	"-n \"${img_prefix}\""
 )
 
-eval "${script_dir}/cmptrees.sh ${cmptreeopts[@]}"
+eval "cmptrees.sh ${cmptreeopts[@]}"
+
 eval "${script_dir}/rofstests.py \"${img_mount}\""
 
-eval "${script_dir}/logck.sh -l \"${cmd_log}\" -s \"${img_src}\" -m \"${img_mountid}\""
+logckopts=(
+	"-l \"${cmd_log}\""
+	"-s \"${img_src}\""
+	"-m \"microfs: debug_mountid=${img_mountid}\""
+)
+
+eval "logck.sh ${logckopts[@]}"
 
 exit 0

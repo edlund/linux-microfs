@@ -17,10 +17,11 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+source "boilerplate.sh"
+
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
 top_dir=`dirname "${script_dir}"`
-source "${top_dir}/tools/boilerplate.sh"
 
 if [[ $# -ne 2 || ! -d "$1" || ! ( "$2" =~ ^[0-9]+$ ) ]] ; then
 	cat <<EOF
@@ -38,7 +39,7 @@ img_src="${workdir}/debug_cksig"
 img_file="${img_src}.img"
 img_mount="${img_src}.mount"
 
-"${top_dir}/tools/mklndir.sh" "${img_src}" > /dev/null
+"mklndir.sh" "${img_src}" > /dev/null
 atexit_0 rm -rf "${img_src}"
 
 "${top_dir}/microfsmki" "${img_src}" "${img_file}" > /dev/null

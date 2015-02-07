@@ -17,9 +17,10 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+source "boilerplate.sh"
+
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
-source "${script_dir}/boilerplate.sh"
 
 wd="/tmp"
 seed="`date +%s`"

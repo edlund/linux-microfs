@@ -34,9 +34,10 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+source "boilerplate.sh"
+
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
-source "${script_dir}/boilerplate.sh"
 
 temp_dir=""
 devtable_path=""

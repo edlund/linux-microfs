@@ -19,9 +19,10 @@
 
 # test.sh: Functional tests for microfs.
 
+source "boilerplate.sh"
+
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
-source "${script_dir}/tools/boilerplate.sh"
 
 conf_paddingtest="no"
 conf_quicktest="no"
@@ -70,14 +71,14 @@ data_options=(
 )
 
 src_cmds+=(
-	"${script_dir}/tools/mkemptydir.sh"
-	"${script_dir}/tools/mkhuskdir.sh"
-	"${script_dir}/tools/mklndir.sh"
-	"${script_dir}/tools/mkmbdentdir.sh"
-	"${script_dir}/tools/mkpow2dir.py"
-	"${script_dir}/tools/mkholedir.py \
+	"mkemptydir.sh"
+	"mkhuskdir.sh"
+	"mklndir.sh"
+	"mkmbdentdir.sh"
+	"mkpow2dir.py"
+	"mkholedir.py \
 --random-seed=${conf_randomseed}"
-	"${script_dir}/tools/mkrandtree.py \
+	"mkrandtree.py \
 --random-seed=${conf_randomseed} \
 --size-budget=${conf_sizebudget} \
 --file-content=${conf_filecontent}_bytes"
@@ -136,68 +137,6 @@ else
 	conf_stresstest=""
 fi
 
-echo "$0: running utility tests..."
-
-check_util_cmptrees() {
-	local dir_a="${temp_dir}/check_util_cmptrees-a"
-	local dir_b="${temp_dir}/check_util_cmptrees-b"
-	local dirs=("${dir_a}" "${dir_b}")
-	for dir in "${dirs[@]}" ; do
-		mkdir "${dir}"
-		echo "The quick brown fox jumps over the lazy dog" > "${dir}/fox.txt"
-		cat << 'EOF' > "${dir}/loremipsum.txt"
-Lorem ipsum dolor sit amet, consectetur adipisicing elit,
-sed do eiusmod tempor incididunt ut labore et dolore magna
-aliqua. Ut enim ad minim veniam, quis nostrud exercitation
-ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis
-aute irure dolor in reprehenderit in voluptate velit esse
-cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat
-cupidatat non proident, sunt in culpa qui officia deserunt
-mollit anim id est laborum.
-EOF
-	done
-	eval "${script_dir}/tools/cmptrees.sh -a \"${dir_a}\" -b \"${dir_b}\""
-	rm "${dir_a}/fox.txt"
-	untrap_ERR
-	local diff=`${script_dir}/tools/cmptrees.sh -a \"${dir_a}\" -b \"${dir_b}\"`
-	local exit_code=$?
-	trap_ERR
-	if [[ $exit_code -eq 0 || "${diff}" == "" ]] ; then
-		test -z "diff unnoticed"
-	fi
-	rm -r "${dir_a}"
-	rm -r "${dir_b}"
-	true
-}
-
-check_util_mkrandtree() {
-	local dir_a="${temp_dir}/check_util_mkrandtree-a"
-	local dir_b="${temp_dir}/check_util_mkrandtree-b"
-	local random_seed="--random-seed=1"
-	local size_budget="--size-budget=16777216"
-	"${script_dir}/tools/mkrandtree.py" $random_seed $size_budget "${dir_a}"
-	"${script_dir}/tools/mkrandtree.py" $random_seed $size_budget "${dir_b}"
-	"${script_dir}/tools/cmptrees.sh" -a "${dir_a}" -b "${dir_b}" -w "${temp_dir}" -e
-	rm -r "${dir_a}"
-	rm -r "${dir_b}"
-}
-
-check_util_mkholedir() {
-	local dir_a="${temp_dir}/check_util_mkholedir-a"
-	local dir_b="${temp_dir}/check_util_mkholedir-b"
-	local random_seed="--random-seed=0"
-	"${script_dir}/tools/mkholedir.py" $random_seed "${dir_a}"
-	"${script_dir}/tools/mkholedir.py" $random_seed "${dir_b}"
-	"${script_dir}/tools/cmptrees.sh" -a "${dir_a}" -b "${dir_b}" -w "${temp_dir}" -e
-	rm -r "${dir_a}"
-	rm -r "${dir_b}"
-}
-
-check_util_cmptrees
-check_util_mkrandtree
-check_util_mkholedir
-
-echo "$0: utility tests passed."
 echo "$0: running lkm and hostprog tests..."
 
 sudo insmod "${build_dir}/microfs.ko" "debug_insid=${conf_insid}"
