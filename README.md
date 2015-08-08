@@ -1,7 +1,9 @@
 
 # microfs - Minimally Improved Compressed Read Only File System
 
-https://github.com/edlund/linux-microfs
+Origin: https://bitbucket.org/erikedlund/linux-microfs
+
+Mirror: https://github.com/edlund/linux-microfs
 
     microfs is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty
