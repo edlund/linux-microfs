@@ -65,6 +65,9 @@ target that it would require extra effort to develop against.
 Supported kernels at the time of writing:
 
  * Ubuntu: `3.13.0-x-generic` (14.04, "Trusty Tahr")
+ * Ubuntu: `3.19.0-x-generic` (15.04, "Vivid Vervet")
+ * Ubuntu: `4.0.0-homebrew` (15.04, "Vivid Vervet")
+ * Ubuntu: `4.1.0-homebrew` (15.04, "Vivid Vervet")
  * Debian: `3.13-0.bpo.x-486` (7, "Wheezy")
  * Debian: `3.13-0.bpo.x-amd64` (7, "Wheezy")
  * Raspbian: `3.10-x-rpi` (Raspbian kernel)
@@ -154,14 +157,14 @@ options when an image is mounted.
  * `decompressor_data_creator=%s`: How microfs should handle
    decompressor data. See the section "Decompressor data" below.
    Valid values are:
- ** `singleton`
- ** `percpu`
- ** `queue`
+   * `singleton`
+   * `percpu`
+   * `queue`
  * `decompressor_data_acquirer=%s`: How microfs should acquire
    an instance of decompressor data. See the section "Decompressor
    data" below. Valid values are:
- ** `private`
- ** `public`
+   * `private`
+   * `public`
  * `debug_mountid=%u`: Specify a mount ID which can help with
    debugging. It will printed as an INFO log message when
    the image is mounted.
