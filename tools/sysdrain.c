@@ -24,11 +24,11 @@
 #define SYSDRAIN_MINRANDSHIFT 10
 #define SYSDRAIN_MAXRANDSHIFT 17
 
-#define SYSDRAIN_SLOTS ((1 << 15) - 1)
-
 #define SYSDRAIN_OPTIONS "hves:m:"
 
 struct sysdrain {
+	/* Number of allocated pointer slots. */
+	__u64 d_slots;
 	/* Pointers to allocated memory. */
 	void** d_ptrslots;
 	/* Size of pointers in %d_ptrslots. */
@@ -145,7 +145,7 @@ static void handle_more_memory(struct sysdrain* drain,
 	const struct sysdrainoptions* const sdopts, __u64 steps)
 {
 	while (drain->d_memsz < sdopts->so_ceilsz && steps > 0) {
-		if (drain->d_end + 1 > SYSDRAIN_SLOTS) {
+		if (drain->d_end + 1 > drain->d_slots) {
 			error("out of slots");
 		}
 		
@@ -160,10 +160,10 @@ static void handle_more_memory(struct sysdrain* drain,
 			drain->d_end += 1;
 			drain->d_memsz += new_slotsz;
 			
-			message(VERBOSITY_1, "slot %llu filled with %llu bytes",
+			message(VERBOSITY_2, "slot %llu filled with %llu bytes",
 				new_slot, new_slotsz);
 		} else {
-			message(VERBOSITY_1, "failed to satisfy request for %llu bytes for slot %llu",
+			message(VERBOSITY_2, "failed to satisfy request for %llu bytes for slot %llu",
 				new_slotsz, new_slot);
 		}
 		
@@ -189,7 +189,7 @@ static void handle_less_memory(struct sysdrain* drain,
 		drain->d_end -= 1;
 		drain->d_memsz -= slotsz;
 		
-		message(VERBOSITY_1, "%llu bytes freed from slot %llu",
+		message(VERBOSITY_2, "%llu bytes freed from slot %llu",
 			slotsz, slot);
 		
 		steps--;
@@ -209,7 +209,7 @@ static void handle_memory(struct sysdrain* drain,
 		else
 			handle_less_memory(drain, sdopts, 64);
 	}
-	message(VERBOSITY_1, "drained bytes: %llu", drain->d_memsz);
+	message(VERBOSITY_2, "drained bytes: %llu", drain->d_memsz);
 }
 
 static void handle_workload(struct sysdrain* drain,
@@ -237,8 +237,12 @@ static void drain(const struct sysdrainoptions* const sdopts)
 	struct sysdrain drain;
 	memset(&drain, 0, sizeof(drain));
 	
-	drain.d_ptrslots = calloc(SYSDRAIN_SLOTS, sizeof(*drain.d_ptrslots));
-	drain.d_szslots = calloc(SYSDRAIN_SLOTS, sizeof(*drain.d_szslots));
+	drain.d_slots = (__u64)(
+		sdopts->so_ceilsz / (1 << SYSDRAIN_MINRANDSHIFT)
+	) + 1;
+	
+	drain.d_ptrslots = calloc(drain.d_slots, sizeof(*drain.d_ptrslots));
+	drain.d_szslots = calloc(drain.d_slots, sizeof(*drain.d_szslots));
 	if (!drain.d_ptrslots || !drain.d_szslots) {
 		error("failed to allocate slots");
 	}
