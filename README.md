@@ -156,15 +156,10 @@ options when an image is mounted.
    buffer for dentries/inodes.
  * `decompressor_data_creator=%s`: How microfs should handle
    decompressor data. See the section "Decompressor data" below.
-   Valid values are:
-   * `singleton`
-   * `percpu`
-   * `queue`
+   Valid values are: `singleton`, `percpu`, `queue`.
  * `decompressor_data_acquirer=%s`: How microfs should acquire
    an instance of decompressor data. See the section "Decompressor
-   data" below. Valid values are:
-   * `private`
-   * `public`
+   data" below. Valid values are: `private`, `public`.
  * `debug_mountid=%u`: Specify a mount ID which can help with
    debugging. It will printed as an INFO log message when
    the image is mounted.
