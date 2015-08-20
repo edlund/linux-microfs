@@ -84,15 +84,8 @@ src_cmds+=(
 --file-content=${conf_filecontent}_bytes"
 )
 
-# Rely on the credentials being cached after the first sudo.
-echo "$0: root required to proceed (last chance to change your mind)"
-sudo true
-
-_check_start_time=`date +%s`
-
-build_dir=$script_dir
-
 echo ""
+echo "$0: CONFIGURATION:"
 echo "$0: padding test? ${conf_paddingtest}"
 echo "$0: quick test? ${conf_quicktest}"
 echo "$0: stress test? ${conf_stresstest}"
@@ -107,6 +100,14 @@ for data_option in "${data_options[@]}" ; do
 	echo "$0: => \"${data_option}\""
 done
 echo ""
+
+# Rely on the credentials being cached after the first sudo.
+echo "$0: root required to proceed (last chance to change your mind)"
+sudo true
+
+_check_start_time=`date +%s`
+
+build_dir=$script_dir
 
 temp_dir=`mktemp -d --tmpdir microfs.test.XXXXXXXXXXXXXXXX`
 atexit_0 rm -rf "${temp_dir}"
