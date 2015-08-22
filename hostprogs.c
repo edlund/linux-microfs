@@ -18,6 +18,20 @@
 
 #include "hostprogs.h"
 
+#include <pthread.h>
+
+static pthread_mutex_t hostprog_print_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void hostprog_print_lock(void)
+{
+	pthread_mutex_lock(&hostprog_print_mutex);
+}
+
+void hostprog_print_unlock(void)
+{
+	pthread_mutex_unlock(&hostprog_print_mutex);
+}
+
 int fykshuffle(void** slots, const size_t length)
 {
 	if (length > RAND_MAX) {

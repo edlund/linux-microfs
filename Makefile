@@ -123,9 +123,10 @@ test-objs := \
 	hostprogs.o
 HOSTLOADLIBES_test := -lcheck -lm -lrt -lpthread
 
-HOSTLOADLIBES_microfscki += -lz
-HOSTLOADLIBES_microfsmki += -lz
-HOSTLOADLIBES_microfslib += -lz
+HOSTPROG_LIBS := -lz -lpthread
+HOSTLOADLIBES_microfscki += $(HOSTPROG_LIBS)
+HOSTLOADLIBES_microfsmki += $(HOSTPROG_LIBS)
+HOSTLOADLIBES_microfslib += $(HOSTPROG_LIBS)
 ifeq ($(LIB_ZLIB),1)
 $(info -lz build)
 ccflags-y += -DMICROFS_DECOMPRESSOR_ZLIB

@@ -48,29 +48,40 @@
 
 #include <linux/types.h>
 
+#ifndef HOSTPROG_PRINT_LOCK
+#define HOSTPROG_PRINT_LOCK 0
+#endif
+
+void hostprog_print_lock(void);
+void hostprog_print_unlock(void);
+
 #define do_error(Exit, CanExit, ...) \
 	do { \
+		if (HOSTPROG_PRINT_LOCK) hostprog_print_lock(); \
 		fprintf(stderr, "!!! error: "); \
 		fprintf(stderr, __VA_ARGS__); \
 		fprintf(stderr, " (%s:%d)", __FILE__, __LINE__); \
 		fprintf(stderr, "\n"); \
+		if (HOSTPROG_PRINT_LOCK) hostprog_print_unlock(); \
 		if (CanExit) \
-			Exit(EXIT_FAILURE); \
+			Exit; \
 	} while (0)
 
-#define error(...) do_error(exit, 1, __VA_ARGS__)
+#define error(...) do_error(exit(EXIT_FAILURE), 1, __VA_ARGS__)
 
 #define do_warning(Exit, CanExit, ...) \
 	do { \
+		if (HOSTPROG_PRINT_LOCK) hostprog_print_lock(); \
 		fprintf(stderr, "*** warning: "); \
 		fprintf(stderr, __VA_ARGS__); \
 		fprintf(stderr, " (%s:%d)", __FILE__, __LINE__); \
 		fprintf(stderr, "\n"); \
+		if (HOSTPROG_PRINT_LOCK) hostprog_print_unlock(); \
 		if (hostprog_werror) \
 			do_error(Exit, CanExit, "warnings treated as errors"); \
 	} while (0)
 
-#define warning(...) do_warning(exit, 1, __VA_ARGS__)
+#define warning(...) do_warning(exit(EXIT_FAILURE), 1, __VA_ARGS__)
 
 enum {
 	VERBOSITY_0 = 0,
@@ -81,8 +92,10 @@ enum {
 #define message(Level, ...) \
 	do { \
 		if (hostprog_verbosity >= Level) { \
+			if (HOSTPROG_PRINT_LOCK) hostprog_print_lock(); \
 			fprintf(stdout, __VA_ARGS__); \
 			fprintf(stdout, "\n"); \
+			if (HOSTPROG_PRINT_LOCK) hostprog_print_unlock(); \
 		} \
 	} while (0)
 

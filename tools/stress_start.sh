@@ -46,3 +46,4 @@ sysdrain_params=(
 )
 eval "${script_dir}/sysdrain ${sysdrain_params[@]} &"
 echo $! > "${sysdrain_pid}"
+

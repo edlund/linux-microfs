@@ -57,7 +57,8 @@ static void handle_stat(struct readoptions* const rdopts, const char* path)
 	
 	struct stat st;
 	if (stat(path, &st) < 0) {
-		do_warning(rdopts->ro_exit, 1, "fail to stat \"%s\": %s, it will be skipped",
+		do_warning(rdopts->ro_exit(EXIT_FAILURE), 1,
+			"fail to stat \"%s\": %s, it will be skipped",
 			path, strerror(errno));
 	} else {
 		message(VERBOSITY_1, " st %c %s", nodtype(st.st_mode), path);
@@ -68,13 +69,14 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 {
 	struct stat st;
 	if (stat(path, &st) < 0) {
-		do_warning(rdopts->ro_exit, 1, "fail to stat \"%s\": %s, it will be skipped",
-			path, strerror(errno));
+		do_warning(rdopts->ro_exit(EXIT_FAILURE), 1,
+			"fail to stat \"%s\": %s, it will be skipped", path,
+			strerror(errno));
 	} else if (S_ISREG(st.st_mode) && st.st_size) {
 		int rdfd = open(path, O_RDONLY, 0);
 		if (rdfd < 0) {
-			do_error(rdopts->ro_exit, 1, "failed to open path \"%s\": %s",
-				path, strerror(errno));
+			do_error(rdopts->ro_exit(EXIT_FAILURE), 1,
+				"failed to open path \"%s\": %s", path, strerror(errno));
 		}
 		
 		const hostprog_stack_int_t max = HOSTPROG_STACK_INT_T_MAX;
@@ -84,13 +86,14 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 		hostprog_stack_int_t offset = (blks - 1) * rdopts->ro_blksz;
 		
 		if (offset > max) {
-			do_error(rdopts->ro_exit, 1, "the file \"%s\" is too big,"
+			do_error(rdopts->ro_exit(EXIT_FAILURE), 1, "the file \"%s\" is too big,"
 				" offset=%td, max=%td", path, offset, max);
 		}
 		
 		while (offset >= 0) {
 			if (hostprog_stack_push(rdopts->ro_offsets, offset) < 0) {
-				do_error(rdopts->ro_exit, 1, "failed to push offset %td to the offset stack: %s",
+				do_error(rdopts->ro_exit(EXIT_FAILURE), 1,
+					"failed to push offset %td to the offset stack: %s",
 					offset, strerror(errno));
 			}
 			offset -= rdopts->ro_blksz;
@@ -99,22 +102,24 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 		if (!rdopts->ro_seqread) {
 			if (fykshuffle(rdopts->ro_offsets->st_slots,
 					hostprog_stack_size(rdopts->ro_offsets)) < 0)
-				do_error(rdopts->ro_exit, 1, "failed to shuffle the offset stack: %s",
-					strerror(errno));
+				do_error(rdopts->ro_exit(EXIT_FAILURE), 1,
+					"failed to shuffle the offset stack: %s", strerror(errno));
 		}
 		
 		while (hostprog_stack_size(rdopts->ro_offsets)) {
 			if (hostprog_stack_pop(rdopts->ro_offsets, &offset) < 0) {
-				do_error(rdopts->ro_exit, 1, "failed to pop an offset off from the offset stack: %s",
+				do_error(rdopts->ro_exit(EXIT_FAILURE), 1,
+					"failed to pop an offset off from the offset stack: %s",
 					strerror(errno));
 			}
 			if (lseek(rdfd, offset, SEEK_SET) == ((off_t)-1)) {
-				do_error(rdopts->ro_exit, 1, "failed to set file pointer to offset %td: %s",
+				do_error(rdopts->ro_exit(EXIT_FAILURE), 1,
+					"failed to set file pointer to offset %td: %s",
 					offset, strerror(errno));
 			}
 			if (read(rdfd, rdopts->ro_blkbuf, rdopts->ro_blksz) < 0) {
-				do_error(rdopts->ro_exit, 1, "failed to read from file: %s",
-					strerror(errno));
+				do_error(rdopts->ro_exit(EXIT_FAILURE), 1,
+					"failed to read from file: %s", strerror(errno));
 			}
 		}
 		
@@ -132,8 +137,8 @@ static void walk_paths(struct readoptions* const rdopts)
 	const int files = hostprog_stack_size(rdopts->ro_files);
 	if (!rdopts->ro_seqfiles) {
 		if (fykshuffle(rdopts->ro_files->st_slots, files) < 0)
-			do_error(rdopts->ro_exit, 1, "failed to shuffle the file stack: %s",
-				strerror(errno));
+			do_error(rdopts->ro_exit(EXIT_FAILURE), 1,
+				"failed to shuffle the file stack: %s", strerror(errno));
 	}
 	for (int i = 0; i < files; i++) {
 		rdopts->ro_handle(rdopts, rdopts->ro_files->st_slots[i]);
@@ -175,7 +180,8 @@ static void multitask(struct readoptions* const rdopts)
 	for (childnr = 0; childnr < rdopts->ro_workers; childnr++) {
 		pid = fork();
 		if (pid < 0) {
-			do_warning(exit, 0, "failed to fork: %s, continuing with %llu workers",
+			do_warning(exit(EXIT_FAILURE), 0,
+				"failed to fork: %s, continuing with %llu workers",
 				strerror(errno), childnr);
 			break;
 		} else if (pid == 0) {

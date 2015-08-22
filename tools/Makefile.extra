@@ -36,7 +36,8 @@ $(info DEBUG build)
 endif
 
 LDFLAGS += \
-	-lrt
+	-lrt \
+	-pthread
 
 all: devtck devtmk frd sysdrain
 
@@ -69,3 +70,4 @@ uninstall:
 	rm $(INSTALL_PATH)/devtmk
 	rm $(INSTALL_PATH)/frd
 	rm $(INSTALL_PATH)/sysdrain
+

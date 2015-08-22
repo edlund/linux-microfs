@@ -16,15 +16,19 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#define HOSTPROG_PRINT_LOCK 1
+
 #include "../microfs.h"
 #include "../hostprogs.h"
+
+#include <pthread.h>
 
 #include <sys/sysinfo.h>
 
 #define SYSDRAIN_MINRANDSHIFT 10
-#define SYSDRAIN_MAXRANDSHIFT 17
+#define SYSDRAIN_MAXRANDSHIFT 22
 
-#define SYSDRAIN_OPTIONS "hves:m:"
+#define SYSDRAIN_OPTIONS "hves:m:t:"
 
 struct sysdrain {
 	/* Number of allocated pointer slots. */
@@ -37,11 +41,19 @@ struct sysdrain {
 	__u64 d_end;
 	/* Total size of allocated memory. */
 	__u64 d_memsz;
+	/* Local %so_targetsz. */
+	__u64 d_lcl_targetsz;
+	/* Local %so_ceilsz. */
+	__u64 d_lcl_ceilsz;
+	/* Local %so_floorsz. */
+	__u64 d_lcl_floorsz;
 };
 
 struct sysdrainoptions {
 	/* Random seed. */
 	unsigned int so_seed;
+	/* Number of threads to spawn. */
+	__u32 so_threads;
 	/* User requested drain percentage. */
 	__u64 so_targetpercent;
 	/* Target size based on given %so_targetpercent. */
@@ -56,7 +68,7 @@ typedef void (*drain_task)(struct sysdrain*);
 
 static void drain_task_memset0(struct sysdrain* drain)
 {
-	message(VERBOSITY_1, "drain_task_memset0");
+	message(VERBOSITY_2, "drain_task_memset0");
 	__u64 slot = rand_nonuniform_range(0, drain->d_end);
 	__u64 slotsz = drain->d_szslots[slot];
 	memset(drain->d_ptrslots[slot], 0, slotsz);
@@ -66,31 +78,33 @@ static void drain_task_read(struct sysdrain* drain, const char* path)
 {
 	int rdfd = open(path, O_RDONLY, 0);
 	if (rdfd < 0) {
-		error("failed to open path \"%s\": %s", path, strerror(errno));
+		do_error(pthread_exit(NULL), 1, "failed to open path \"%s\": %s",
+			path, strerror(errno));
 	}
 	__u64 slot = rand_nonuniform_range(0, drain->d_end);
 	__u64 slotsz = drain->d_szslots[slot];
 	if (read(rdfd, drain->d_ptrslots[slot], slotsz) < 0) {
-		error("failed to read \"%s\": %s", path, strerror(errno));
+		do_error(pthread_exit(NULL), 1, "failed to read \"%s\": %s",
+			path, strerror(errno));
 	}
 	close(rdfd);
 }
 
 static void drain_task_read_devurandom(struct sysdrain* drain)
 {
-	message(VERBOSITY_1, "drain_task_read_devurandom");
+	message(VERBOSITY_2, "drain_task_read_devurandom");
 	drain_task_read(drain, "/dev/urandom");
 }
 
 static void drain_task_read_devzero(struct sysdrain* drain)
 {
-	message(VERBOSITY_1, "drain_task_read_devzero");
+	message(VERBOSITY_2, "drain_task_read_devzero");
 	drain_task_read(drain, "/dev/zero");
 }
 
 static void drain_task_copy(struct sysdrain* drain)
 {
-	message(VERBOSITY_1, "drain_task_copy");
+	message(VERBOSITY_2, "drain_task_copy");
 	__u64 slot_a;
 	__u64 slot_b;
 	do {
@@ -117,14 +131,40 @@ static void drain_task_copy(struct sysdrain* drain)
 
 static void drain_task_memfrob(struct sysdrain* drain)
 {
-	message(VERBOSITY_1, "drain_task_memfrob");
+	message(VERBOSITY_2, "drain_task_memfrob");
 	__u64 slot = rand_nonuniform_range(0, drain->d_end);
 	__u64 slotsz = drain->d_szslots[slot];
 	memfrob(drain->d_ptrslots[slot], slotsz);
 }
 
+static __u32 nthreads(const struct sysdrainoptions* const sdopts)
+{
+	if (sdopts->so_threads)
+		return sdopts->so_threads;
+	else {
+		__u32 threads = 1;
+#define CPU_WARNING \
+	warning("failed to get number of online CPUs, using 1 thread")
+#ifdef _SC_NPROCESSORS_ONLN
+		long conf = sysconf(_SC_NPROCESSORS_ONLN);
+		if (conf == -1)
+			CPU_WARNING;
+		else
+			threads = (__u32)conf;
+#else
+#warning "_SC_NPROCESSORS_ONLN not available"
+CPU_WARNING;
+#endif
+#undef CPU_WARNING
+		
+		return threads;
+	}
+}
+
 static void prepare(struct sysdrainoptions* sdopts)
 {
+	sdopts->so_threads = nthreads(sdopts);
+	
 	struct sysinfo sysi;
 	sysinfo(&sysi);
 	
@@ -134,6 +174,7 @@ static void prepare(struct sysdrainoptions* sdopts)
 	sdopts->so_ceilsz = (__u64)(sysi.freeram * (chfactor + 0.1));
 	sdopts->so_floorsz = (__u64)(sysi.freeram * (chfactor - 0.1));
 	
+	message(VERBOSITY_1, "\n");
 	message(VERBOSITY_1, "free ram: %lu", sysi.freeram);
 	message(VERBOSITY_1, "percent request: %llu%%", sdopts->so_targetpercent);
 	message(VERBOSITY_1, "drain target: %llu", sdopts->so_targetsz);
@@ -144,9 +185,11 @@ static void prepare(struct sysdrainoptions* sdopts)
 static void handle_more_memory(struct sysdrain* drain,
 	const struct sysdrainoptions* const sdopts, __u64 steps)
 {
-	while (drain->d_memsz < sdopts->so_ceilsz && steps > 0) {
+	(void)sdopts;
+	
+	while (drain->d_memsz < drain->d_lcl_ceilsz && steps > 0) {
 		if (drain->d_end + 1 > drain->d_slots) {
-			error("out of slots");
+			do_error(pthread_exit(NULL), 1, "out of slots");
 		}
 		
 		__u64 new_slot = drain->d_end + 1;
@@ -174,7 +217,9 @@ static void handle_more_memory(struct sysdrain* drain,
 static void handle_less_memory(struct sysdrain* drain,
 	const struct sysdrainoptions* const sdopts, __u64 steps)
 {
-	while (sdopts->so_floorsz < drain->d_memsz && steps > 0) {
+	(void)sdopts;
+	
+	while (drain->d_lcl_floorsz < drain->d_memsz && steps > 0) {
 		__u64 slot = rand_nonuniform_range(0, drain->d_end);
 		__u64 slotsz = drain->d_szslots[slot];
 		
@@ -200,12 +245,12 @@ static void handle_memory(struct sysdrain* drain,
 	const struct sysdrainoptions* const sdopts)
 {
 	int situation_nominal = (
-		drain->d_memsz >= sdopts->so_floorsz &&
-		drain->d_memsz <= sdopts->so_ceilsz
+		drain->d_memsz >= drain->d_lcl_floorsz &&
+		drain->d_memsz <= drain->d_lcl_ceilsz
 	);
-	if (!situation_nominal || rand_nonuniform_range(0, 8) == 0) {
-		if (drain->d_memsz < sdopts->so_ceilsz)
-			handle_more_memory(drain, sdopts, 32);
+	if (!situation_nominal || rand_nonuniform_range(0, 4) == 0) {
+		if (drain->d_memsz < drain->d_lcl_ceilsz)
+			handle_more_memory(drain, sdopts, 64);
 		else
 			handle_less_memory(drain, sdopts, 64);
 	}
@@ -232,19 +277,35 @@ static void handle_workload(struct sysdrain* drain,
 	task(drain);
 }
 
-static void drain(const struct sysdrainoptions* const sdopts)
+static void* drain(void* arg)
 {
+	const struct sysdrainoptions* const sdopts = arg;
+	
 	struct sysdrain drain;
 	memset(&drain, 0, sizeof(drain));
 	
+	drain.d_lcl_targetsz = sdopts->so_targetsz / sdopts->so_threads;
+	drain.d_lcl_ceilsz = sdopts->so_ceilsz / sdopts->so_threads;
+	drain.d_lcl_floorsz = sdopts->so_floorsz / sdopts->so_threads;
+	
+	message(VERBOSITY_1, "\n[drainaddr=%p] thread spawned\n"
+			"\tdrain target: %llu\n"
+			"\tdrain ceiling: %llu\n"
+			"\tdrain floor: %llu\n",
+		(void*)&drain,
+		drain.d_lcl_targetsz,
+		drain.d_lcl_ceilsz,
+		drain.d_lcl_floorsz
+	);
+	
 	drain.d_slots = (__u64)(
-		sdopts->so_ceilsz / (1 << SYSDRAIN_MINRANDSHIFT)
+		drain.d_lcl_ceilsz / (1 << SYSDRAIN_MINRANDSHIFT)
 	) + 1;
 	
 	drain.d_ptrslots = calloc(drain.d_slots, sizeof(*drain.d_ptrslots));
 	drain.d_szslots = calloc(drain.d_slots, sizeof(*drain.d_szslots));
 	if (!drain.d_ptrslots || !drain.d_szslots) {
-		error("failed to allocate slots");
+		do_error(pthread_exit(NULL), 1, "failed to allocate slots");
 	}
 	drain.d_end = 0;
 	
@@ -254,6 +315,8 @@ static void drain(const struct sysdrainoptions* const sdopts)
 		handle_memory(&drain, sdopts);
 		handle_workload(&drain, sdopts);
 	}
+	
+	pthread_exit(NULL);
 }
 
 static void usage(const char* const exe, FILE* const dest)
@@ -266,6 +329,7 @@ static void usage(const char* const exe, FILE* const dest)
 		" -e          turn warnings into errors\n"
 		" -s <int>    random seed\n"
 		" -m <int>    percent of free RAM to drain (m >= 10, m <= 90)\n"
+		" -t <int>    number of threads to use\n"
 		"\n", exe, SYSDRAIN_OPTIONS, exe);
 	
 	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
@@ -308,6 +372,9 @@ int main(int argc, char* argv[])
 					error("invalid memory drain request: %llu%%\n",
 						sdopts.so_targetpercent);
 				break;
+			case 't':
+				opt_strtolx(ul, option, optarg, sdopts.so_threads);
+				break;
 			default:
 				/* Ignore it.
 				 */
@@ -317,7 +384,22 @@ int main(int argc, char* argv[])
 	}
 	
 	prepare(&sdopts);
-	drain(&sdopts);
+	
+	pthread_attr_t thread_attr;
+	pthread_attr_init(&thread_attr);
+	pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
+	
+	pthread_t* threads = calloc(sdopts.so_threads, sizeof(*threads));
+	if (!threads)
+		error("failed to allocate thread handles");
+	for (__u32 i = 0; i < sdopts.so_threads; ++i) {
+		if (pthread_create(&threads[i], &thread_attr, drain, (void*)&sdopts))
+			error("failed to create thread #%u", i);
+	}
+	for (__u32 i = 0; i < sdopts.so_threads; ++i) {
+		pthread_join(threads[i], NULL);
+	}
 	
 	exit(EXIT_SUCCESS);
 }
+
