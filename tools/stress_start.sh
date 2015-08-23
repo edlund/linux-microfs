@@ -42,7 +42,9 @@ echo $! > "${frd_pid}"
 sysdrain_pid="${wd}/${name}-sysdrain.pid"
 sysdrain_params=(
 	"-s \"${seed}\""
-	"-m \"70%\""
+	"-t \"${threads}\""
+	"-m \"${mempercentage}\""
+	"-M \"${memvalue}\""
 )
 eval "${script_dir}/sysdrain ${sysdrain_params[@]} &"
 echo $! > "${sysdrain_pid}"

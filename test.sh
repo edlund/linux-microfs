@@ -34,11 +34,12 @@ conf_filecontent="uncompressable"
 conf_randomseed="`date +%s`"
 conf_insid="`date +%s`"
 conf_checksum="sha512sum"
+conf_stressparams="-S"
 
 data_options=()
 src_cmds=()
 
-options="PQSMm:b:f:r:C:d:c:"
+options="PQSMm:b:f:r:C:d:c:s:"
 while getopts $options option
 do
 	case $option in
@@ -53,6 +54,7 @@ do
 		C ) conf_checksum=$OPTARG ;;
 		d ) data_options+=("${OPTARG}") ;;
 		c ) src_cmds+=("${OPTARG}") ;;
+		s ) conf_stressparams=$OPTARG ;;
 	esac
 done
 
@@ -94,6 +96,7 @@ echo "$0: insert id is \"${conf_insid}\""
 echo "$0: random seed is \"${conf_randomseed}\""
 echo "$0: size budget is \"${conf_sizebudget}\""
 echo "$0: checksum program is \"${conf_checksum}\""
+echo "$0: stress params are \"${conf_stressparams}\""
 echo "$0: libraries tested: `${script_dir}/microfslib | tr '\n' ' '`"
 echo "$0: data options tested:"
 for data_option in "${data_options[@]}" ; do
@@ -133,7 +136,7 @@ else
 fi
 
 if [[ "${conf_stresstest}" == "yes" ]] ; then
-	conf_stresstest="-S"
+	conf_stresstest="${conf_stressparams}"
 else
 	conf_stresstest=""
 fi
@@ -299,8 +302,8 @@ for src_cmd in "${src_cmds[@]}" ; do
 				"-i \"${src_cmd}\""
 				"-r \"${conf_randomseed}\""
 				"-C \"${conf_checksum}\""
+				"-S \"${conf_stresstest}\""
 				"${data_option}"
-				"${conf_stresstest}"
 			)
 			image_cmd="${script_dir}/tools/imgmkckver.sh ${image_params[@]}"
 			echo "$0: running image command \"${image_cmd}\"..."

@@ -22,17 +22,26 @@ source "boilerplate.sh"
 script_path=`readlink -f "$0"`
 script_dir=`dirname "${script_path}"`
 
+dummy=0
+cpus="`getconf _NPROCESSORS_ONLN`"
 wd="/tmp"
 seed="`date +%s`"
-workers="32"
+workers="`expr 8 \* ${cpus}`"
+threads="${cpus}"
+mempercentage="70%"
+memvalue=0
 
-options="o:s:w:"
+options="So:s:w:t:m:M:"
 while getopts $options option
 do
 	case $option in
+		S ) dummy=1 ;;
 		o ) wd=$OPTARG ;;
 		s ) seed=$OPTARG ;;
 		w ) workers=$OPTARG ;;
+		t ) threads=$OPTARG ;;
+		m ) mempercentage=$OPTARG ;;
+		M ) memvalue=$OPTARG ;;
 	esac
 done
 
@@ -45,16 +54,21 @@ mount="$3"
 if [[ ! ( "${action}" == "start" || "${action}" == "stop" ) || \
 		( "${action}" == "start" && ! -d "${mount}" ) || \
 		! ( "${seed}" =~ ^[0-9]+$  && "${workers}" =~ ^[0-9]+$ ) || \
-		! ( "${name}" =~ ^[-a-zA-Z0-9]+$ ) || ! -d "${wd}" ]] ; then
+		! ( "${name}" =~ ^[-a-zA-Z0-9]+$ ) || ! -d "${wd}" || \
+		! ( "${mempercentage}" =~ ^[0-9]+%$ ) || \
+		! ( "${memvalue}" =~ ^[0-9]+$ ) ]] ; then
 	cat <<EOF
-Usage: `basename $0` [-o:s:w:] start|stop "alnumname" "/path/to/mount"
+Usage: `basename $0` [-So:s:w:m:M:] start|stop "alnumname" "/path/to/mount"
 
 Start or stop stress/load testing on the given mount (or
 directory).
 
+    -S          dummy flag
     -o <str>    path to work directory
     -s <int>    random seed to use
     -w <int>    number of worker processes to use
+    -m <str>    memory drain percentage
+    -M <int>    memory drain value (in bytes)
 EOF
 	exit 1
 fi

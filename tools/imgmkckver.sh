@@ -33,10 +33,10 @@ rand_seed="`date +%s`"
 checksum_prog=""
 data_acquirer=""
 data_creator=""
-stress_test=0
+stress_test=""
 reuse_forbidden=0
 
-options="t:m:c:s:d:p:x:i:r:C:A:D:SF"
+options="t:m:c:s:d:p:x:i:r:C:A:D:S:F"
 while getopts $options option
 do
 	case $option in
@@ -52,7 +52,7 @@ do
 		C ) checksum_prog=$OPTARG ;;
 		A ) data_acquirer=$OPTARG ;;
 		D ) data_creator=$OPTARG ;;
-		S ) stress_test=1 ;;
+		S ) stress_test=$OPTARG ;;
 		F ) reuse_forbidden=1 ;;
 	esac
 done
@@ -80,7 +80,7 @@ it against its source, all in one (long) command.
     -C <str>    checksum program to use
     -A <str>    data acquirer to use (see microfs_decompressor_data_manager_acquire_*)
     -D <str>    data creator to use (see microfs_decompressor_data_*)
-    -S          stress test (very time and resource consuming)
+    -S <str>    stress test (very time and resource consuming)
     -F          do not use existing image files, always create them
 EOF
 	exit 1
@@ -127,13 +127,13 @@ atexit_0 rmdir "${img_mount}"
 eval "sudo mount ${img_mountopts[@]} \"${img_file}\" \"${img_mount}\""
 atexit sudo umount "${img_mount}"
 
-if [[ $stress_test -ne 0 ]] ; then
+if [[ $stress_test != "" ]] ; then
 	stress_name="imgmkckver-${rand_seed}"
 	stress_start_params=(
 		"-o \"${dest_dir}\""
 		"-s \"${rand_seed}\""
-		"-w \"16\""
-		"start"
+		"${stress_test}"
+		"\"start\""
 		"\"${stress_name}\""
 		"\"${img_mount}\""
 	)
