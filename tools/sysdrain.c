@@ -28,7 +28,7 @@
 #define SYSDRAIN_MINRANDSHIFT 10
 #define SYSDRAIN_MAXRANDSHIFT 22
 
-#define SYSDRAIN_OPTIONS "hves:m:t:"
+#define SYSDRAIN_OPTIONS "hves:m:M:t:"
 
 struct sysdrain {
 	/* Number of allocated pointer slots. */
@@ -168,15 +168,26 @@ static void prepare(struct sysdrainoptions* sdopts)
 	struct sysinfo sysi;
 	sysinfo(&sysi);
 	
-	double chfactor = sdopts->so_targetpercent / 100.0;
+	int print_percentage = sdopts->so_targetsz == 0;
 	
-	sdopts->so_targetsz = (__u64)(sysi.freeram * chfactor);
-	sdopts->so_ceilsz = (__u64)(sysi.freeram * (chfactor + 0.1));
-	sdopts->so_floorsz = (__u64)(sysi.freeram * (chfactor - 0.1));
+	if (sdopts->so_targetsz) {
+		sdopts->so_targetsz = sysi.freeram - sdopts->so_targetsz;
+		__u64 diff = (__u64)(sdopts->so_targetsz / 10.0);
+		sdopts->so_ceilsz = sdopts->so_targetsz + diff;
+		sdopts->so_floorsz = sdopts->so_targetsz - diff;
+	} else {
+		double chfactor = sdopts->so_targetpercent / 100.0;
+		sdopts->so_targetsz = (__u64)(sysi.freeram * chfactor);
+		sdopts->so_ceilsz = (__u64)(sysi.freeram * (chfactor + 0.1));
+		sdopts->so_floorsz = (__u64)(sysi.freeram * (chfactor - 0.1));
+	}
 	
 	message(VERBOSITY_1, "\n");
 	message(VERBOSITY_1, "free ram: %lu", sysi.freeram);
-	message(VERBOSITY_1, "percent request: %llu%%", sdopts->so_targetpercent);
+	if (print_percentage) {
+		message(VERBOSITY_1, "percent request: %llu%%",
+			sdopts->so_targetpercent);
+	}
 	message(VERBOSITY_1, "drain target: %llu", sdopts->so_targetsz);
 	message(VERBOSITY_1, "drain ceiling: %llu", sdopts->so_ceilsz);
 	message(VERBOSITY_1, "drain floor: %llu", sdopts->so_floorsz);
@@ -329,6 +340,7 @@ static void usage(const char* const exe, FILE* const dest)
 		" -e          turn warnings into errors\n"
 		" -s <int>    random seed\n"
 		" -m <int>    percent of free RAM to drain (m >= 10, m <= 90)\n"
+		" -M <int>    amount of RAM that should be left free\n"
 		" -t <int>    number of threads to use\n"
 		"\n", exe, SYSDRAIN_OPTIONS, exe);
 	
@@ -371,6 +383,11 @@ int main(int argc, char* argv[])
 				if (sdopts.so_targetpercent < 10 || sdopts.so_targetpercent > 90)
 					error("invalid memory drain request: %llu%%\n",
 						sdopts.so_targetpercent);
+				break;
+			case 'M':
+				opt_strtolx(ul, option, optarg, sdopts.so_targetsz);
+				if (sdopts.so_targetsz && sdopts.so_targetsz < 33554432)
+					warning("leaving very little free RAM");
 				break;
 			case 't':
 				opt_strtolx(ul, option, optarg, sdopts.so_threads);
