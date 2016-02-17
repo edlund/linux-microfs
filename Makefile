@@ -40,6 +40,8 @@ ifndef INSTALL_HOSTPROG_PATH
 INSTALL_HOSTPROG_PATH := /usr/local/bin
 endif
 
+VENDOR_BIN := $(PWD)/vendor/bin
+
 HOST_EXTRACFLAGS += \
 	-Wall \
 	-Wextra \
@@ -179,8 +181,10 @@ clean:
 # Usage: make check [CHECKARGS="..."]
 # 
 check: all
-	$(PWD)/test
-	$(PWD)/test.sh $(CHECKARGS)
+	$(PWD)/vendor/lut/manage.sh -i -p "$(VENDOR_BIN)"
+	export PATH="$(PATH):$(VENDOR_BIN)" ; \
+		$(PWD)/test ; \
+		$(PWD)/test.sh $(CHECKARGS)
 
 # Usage: make remotecheck \
 #     REMOTEHOST="localhost" REMOTEPORT="2222" REMOTEUSER="erik" \

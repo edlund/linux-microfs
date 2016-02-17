@@ -105,7 +105,6 @@ GNU/Linux system which can compile the Linux kernel. Adding
 to the requirements implied by this assumption `microfs` will
 also need the following things in order to compile successfully:
 
- * lut (master), https://github.com/edlund/lut
  * gcc (>=4.7), http://gcc.gnu.org/
  * GNU make (>=3.81), http://www.gnu.org/software/make/
  * GNU bash (>=4.2), http://www.gnu.org/software/bash/
