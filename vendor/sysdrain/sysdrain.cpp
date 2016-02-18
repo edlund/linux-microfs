@@ -1,4 +1,4 @@
-/* microfs - Minimally Improved Compressed Read Only File System
+/* sysdrain - Drain CPU and RAM for fun and profit
  * Copyright (C) 2014 Erik Edlund <erik.edlund@32767.se>
  * 
  * This program is free software; you can redistribute it and/or modify
@@ -16,25 +16,119 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#define HOSTPROG_PRINT_LOCK 1
+#include <algorithm>
+#include <new>
+#include <random>
 
-#include "../microfs.h"
-#include "../hostprogs.h"
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+
+#include <fcntl.h>
 #include <pthread.h>
+#include <unistd.h>
 
+#include <linux/types.h>
+
+#include <sys/stat.h>
 #include <sys/sysinfo.h>
+#include <sys/types.h>
 
 #define SYSDRAIN_MINRANDSHIFT 10
 #define SYSDRAIN_MAXRANDSHIFT 22
 
 #define SYSDRAIN_OPTIONS "hves:m:M:t:"
 
+static std::size_t g_verbosity = 0;
+static std::size_t g_werror = 0;
+static ::pthread_mutex_t g_print_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static inline void print_lock()
+{
+	::pthread_mutex_lock(&g_print_mutex);
+}
+
+static inline void print_unlock()
+{
+	::pthread_mutex_unlock(&g_print_mutex);
+}
+
+static int rand_uniform_range(int min, int max)
+{
+	static std::random_device rd;
+	static std::mt19937 mt(rd());
+	
+	std::uniform_int_distribution<> dist(min, max);
+	
+	return dist(mt);
+}
+
+#define do_error(Exit, CanExit, ...) \
+	do { \
+		::print_lock(); \
+		std::fprintf(stderr, "error: "); \
+		std::fprintf(stderr, __VA_ARGS__); \
+		std::fprintf(stderr, " (%s:%d)", __FILE__, __LINE__); \
+		std::fprintf(stderr, "\n"); \
+		::print_unlock(); \
+		if (CanExit) \
+			Exit; \
+	} while (0)
+
+#define error(...) do_error(exit(EXIT_FAILURE), 1, __VA_ARGS__)
+
+#define do_warning(Exit, CanExit, ...) \
+	do { \
+		::print_lock(); \
+		std::fprintf(stderr, "warning: "); \
+		std::fprintf(stderr, __VA_ARGS__); \
+		std::fprintf(stderr, " (%s:%d)", __FILE__, __LINE__); \
+		std::fprintf(stderr, "\n"); \
+		::print_unlock(); \
+		if (g_werror) \
+			do_error(Exit, CanExit, "warnings treated as errors"); \
+	} while (0)
+
+#define warning(...) do_warning(exit(EXIT_FAILURE), 1, __VA_ARGS__)
+
+enum {
+	VERBOSITY_0 = 0,
+	VERBOSITY_1,
+	VERBOSITY_2
+};
+
+#define message(Level, ...) \
+	do { \
+		if (g_verbosity >= Level) { \
+			::print_lock(); \
+			std::fprintf(stdout, __VA_ARGS__); \
+			std::fprintf(stdout, "\n"); \
+			::print_unlock(); \
+		} \
+	} while (0)
+
+#define opt_stoi(Opt, Arg, Dest) \
+	do { \
+		try { \
+			Dest = std::stoi(Arg); \
+		} \
+		catch (std::exception e) { \
+			error("arg -%c: %s (%c=%s)", Opt, e.what(), Opt, Arg); \
+		} \
+	} while (0)
+
 struct sysdrain {
 	/* Number of allocated pointer slots. */
 	__u64 d_slots;
 	/* Pointers to allocated memory. */
-	void** d_ptrslots;
+	char** d_ptrslots;
 	/* Size of pointers in %d_ptrslots. */
 	__u64* d_szslots;
 	/* The last occupied index of %d_ptrslots. */
@@ -69,25 +163,25 @@ typedef void (*drain_task)(struct sysdrain*);
 static void drain_task_memset0(struct sysdrain* drain)
 {
 	message(VERBOSITY_2, "drain_task_memset0");
-	__u64 slot = rand_nonuniform_range(0, drain->d_end);
+	__u64 slot = rand_uniform_range(0, drain->d_end);
 	__u64 slotsz = drain->d_szslots[slot];
-	memset(drain->d_ptrslots[slot], 0, slotsz);
+	std::memset(drain->d_ptrslots[slot], 0, slotsz);
 }
 
 static void drain_task_read(struct sysdrain* drain, const char* path)
 {
-	int rdfd = open(path, O_RDONLY, 0);
+	int rdfd = ::open(path, O_RDONLY, 0);
 	if (rdfd < 0) {
-		do_error(pthread_exit(NULL), 1, "failed to open path \"%s\": %s",
-			path, strerror(errno));
+		do_error(::pthread_exit(NULL), 1, "failed to open path \"%s\": %s",
+			path, ::strerror(errno));
 	}
-	__u64 slot = rand_nonuniform_range(0, drain->d_end);
+	__u64 slot = rand_uniform_range(0, drain->d_end);
 	__u64 slotsz = drain->d_szslots[slot];
-	if (read(rdfd, drain->d_ptrslots[slot], slotsz) < 0) {
-		do_error(pthread_exit(NULL), 1, "failed to read \"%s\": %s",
-			path, strerror(errno));
+	if (::read(rdfd, drain->d_ptrslots[slot], slotsz) < 0) {
+		do_error(::pthread_exit(NULL), 1, "failed to read \"%s\": %s",
+			path, ::strerror(errno));
 	}
-	close(rdfd);
+	::close(rdfd);
 }
 
 static void drain_task_read_devurandom(struct sysdrain* drain)
@@ -108,18 +202,15 @@ static void drain_task_copy(struct sysdrain* drain)
 	__u64 slot_a;
 	__u64 slot_b;
 	do {
-		slot_a = rand_nonuniform_range(0, drain->d_end);
-		slot_b = rand_nonuniform_range(0, drain->d_end);
+		slot_a = rand_uniform_range(0, drain->d_end);
+		slot_b = rand_uniform_range(0, drain->d_end);
 	} while (slot_a == slot_b);
 	
 	__u64 slot_asz = drain->d_szslots[slot_a];
 	__u64 slot_bsz = drain->d_szslots[slot_b];
 	
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	__u64 fromsz = min(slot_asz, slot_bsz);
-	__u64 tosz = max(slot_asz, slot_bsz);
-#pragma GCC diagnostic pop
+	__u64 fromsz = std::min(slot_asz, slot_bsz);
+	__u64 tosz = std::max(slot_asz, slot_bsz);
 	
 	char* from = drain->d_ptrslots[slot_asz < slot_bsz? slot_a: slot_b];
 	char* to = drain->d_ptrslots[slot_asz < slot_bsz? slot_b: slot_a];
@@ -132,9 +223,9 @@ static void drain_task_copy(struct sysdrain* drain)
 static void drain_task_memfrob(struct sysdrain* drain)
 {
 	message(VERBOSITY_2, "drain_task_memfrob");
-	__u64 slot = rand_nonuniform_range(0, drain->d_end);
+	__u64 slot = rand_uniform_range(0, drain->d_end);
 	__u64 slotsz = drain->d_szslots[slot];
-	memfrob(drain->d_ptrslots[slot], slotsz);
+	::memfrob(drain->d_ptrslots[slot], slotsz);
 }
 
 static __u32 nthreads(const struct sysdrainoptions* const sdopts)
@@ -146,7 +237,7 @@ static __u32 nthreads(const struct sysdrainoptions* const sdopts)
 #define CPU_WARNING \
 	warning("failed to get number of online CPUs, using 1 thread")
 #ifdef _SC_NPROCESSORS_ONLN
-		long conf = sysconf(_SC_NPROCESSORS_ONLN);
+		long conf = ::sysconf(_SC_NPROCESSORS_ONLN);
 		if (conf == -1)
 			CPU_WARNING;
 		else
@@ -200,14 +291,16 @@ static void handle_more_memory(struct sysdrain* drain,
 	
 	while (drain->d_memsz < drain->d_lcl_ceilsz && steps > 0) {
 		if (drain->d_end + 1 > drain->d_slots) {
-			do_error(pthread_exit(NULL), 1, "out of slots");
+			do_error(::pthread_exit(NULL), 1, "out of slots");
 		}
 		
 		__u64 new_slot = drain->d_end + 1;
-		__u64 new_slotsz = 1 << rand_nonuniform_range(
-			SYSDRAIN_MINRANDSHIFT, SYSDRAIN_MAXRANDSHIFT);
+		__u64 new_slotsz = 1 << rand_uniform_range(
+			SYSDRAIN_MINRANDSHIFT,
+			SYSDRAIN_MAXRANDSHIFT
+		);
 		
-		drain->d_ptrslots[new_slot] = calloc(1, new_slotsz);
+		drain->d_ptrslots[new_slot] = new char[new_slotsz];
 		if (drain->d_ptrslots[new_slot]) {
 			drain->d_szslots[new_slot] = new_slotsz;
 			
@@ -231,10 +324,10 @@ static void handle_less_memory(struct sysdrain* drain,
 	(void)sdopts;
 	
 	while (drain->d_lcl_floorsz < drain->d_memsz && steps > 0) {
-		__u64 slot = rand_nonuniform_range(0, drain->d_end);
+		__u64 slot = rand_uniform_range(0, drain->d_end);
 		__u64 slotsz = drain->d_szslots[slot];
 		
-		free(drain->d_ptrslots[slot]);
+		delete [] drain->d_ptrslots[slot];
 		
 		drain->d_ptrslots[slot] = drain->d_ptrslots[drain->d_end];
 		drain->d_ptrslots[drain->d_end] = NULL;
@@ -259,7 +352,7 @@ static void handle_memory(struct sysdrain* drain,
 		drain->d_memsz >= drain->d_lcl_floorsz &&
 		drain->d_memsz <= drain->d_lcl_ceilsz
 	);
-	if (!situation_nominal || rand_nonuniform_range(0, 4) == 0) {
+	if (!situation_nominal || rand_uniform_range(0, 4) == 0) {
 		if (drain->d_memsz < drain->d_lcl_ceilsz)
 			handle_more_memory(drain, sdopts, 64);
 		else
@@ -281,8 +374,8 @@ static void handle_workload(struct sysdrain* drain,
 	
 	(void)sdopts;
 	
-	int ndrain_tasks = sizeof(drain_tasks) / sizeof(drain_task);
-	int tasknr = rand_nonuniform_range(0, ndrain_tasks - 1);
+	auto ndrain_tasks = sizeof(drain_tasks) / sizeof(drain_task);
+	auto tasknr = rand_uniform_range(0, ndrain_tasks - 1);
 	drain_task task = drain_tasks[tasknr];
 	
 	task(drain);
@@ -290,10 +383,10 @@ static void handle_workload(struct sysdrain* drain,
 
 static void* drain(void* arg)
 {
-	const struct sysdrainoptions* const sdopts = arg;
+	auto sdopts = reinterpret_cast<const struct sysdrainoptions* const>(arg);
 	
 	struct sysdrain drain;
-	memset(&drain, 0, sizeof(drain));
+	std::memset(&drain, 0, sizeof(drain));
 	
 	drain.d_lcl_targetsz = sdopts->so_targetsz / sdopts->so_threads;
 	drain.d_lcl_ceilsz = sdopts->so_ceilsz / sdopts->so_threads;
@@ -309,30 +402,30 @@ static void* drain(void* arg)
 		drain.d_lcl_floorsz
 	);
 	
-	drain.d_slots = (__u64)(
+	drain.d_slots = static_cast<__u64>((
 		drain.d_lcl_ceilsz / (1 << SYSDRAIN_MINRANDSHIFT)
-	) + 1;
+	) + 1);
 	
-	drain.d_ptrslots = calloc(drain.d_slots, sizeof(*drain.d_ptrslots));
-	drain.d_szslots = calloc(drain.d_slots, sizeof(*drain.d_szslots));
+	drain.d_ptrslots = new char*[drain.d_slots];
+	drain.d_szslots = new __u64[drain.d_slots];
 	if (!drain.d_ptrslots || !drain.d_szslots) {
 		do_error(pthread_exit(NULL), 1, "failed to allocate slots");
 	}
 	drain.d_end = 0;
 	
-	srand(sdopts->so_seed);
+	std::srand(sdopts->so_seed);
 	
 	for (;;) {
 		handle_memory(&drain, sdopts);
 		handle_workload(&drain, sdopts);
 	}
 	
-	pthread_exit(NULL);
+	::pthread_exit(NULL);
 }
 
-static void usage(const char* const exe, FILE* const dest)
+static void usage(const char* const exe, std::FILE* const dest)
 {
-	fprintf(dest,
+	std::fprintf(dest,
 		"\nUsage: %s [-%s]\n"
 		"\nexample: %s\n\n"
 		" -h          print this message (to stdout) and quit\n"
@@ -344,7 +437,7 @@ static void usage(const char* const exe, FILE* const dest)
 		" -t <int>    number of threads to use\n"
 		"\n", exe, SYSDRAIN_OPTIONS, exe);
 	
-	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
+	std::exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
 }
 
 int main(int argc, char* argv[])
@@ -353,44 +446,43 @@ int main(int argc, char* argv[])
 		usage("sysdrain", stderr);
 	
 	struct sysdrainoptions sdopts;
-	memset(&sdopts, 0, sizeof(sdopts));
+	std::memset(&sdopts, 0, sizeof(sdopts));
 	
-	sdopts.so_seed = time(NULL);
+	sdopts.so_seed = ::time(NULL);
 	sdopts.so_targetpercent = 70;
 	
 	__u64 optarglen;
 	int option;
-	while ((option = getopt(argc, argv, SYSDRAIN_OPTIONS)) != EOF) {
+	while ((option = ::getopt(argc, argv, SYSDRAIN_OPTIONS)) != EOF) {
 		switch (option) {
 			case 'h':
 				usage(argv[0], stdout);
 				break;
 			case 'v':
-				hostprog_verbosity++;
+				g_verbosity++;
 				break;
 			case 'e':
-				hostprog_werror = 1;
+				g_werror++;
 				break;
 			case 's':
-				opt_strtolx(ul, option, optarg, sdopts.so_seed);
+				opt_stoi(option, optarg, sdopts.so_seed);
 				break;
 			case 'm':
-				optarglen = strlen(optarg);
-				if (optarglen > 2 && optarg[optarglen - 1] == '%') {
+				optarglen = std::strlen(optarg);
+				if (optarglen > 2 && optarg[optarglen - 1] == '%')
 					optarg[optarglen - 1] = '\0';
-				}
-				opt_strtolx(ul, option, optarg, sdopts.so_targetpercent);
+				opt_stoi(option, optarg, sdopts.so_targetpercent);
 				if (sdopts.so_targetpercent < 10 || sdopts.so_targetpercent > 90)
 					error("invalid memory drain request: %llu%%\n",
 						sdopts.so_targetpercent);
 				break;
 			case 'M':
-				opt_strtolx(ul, option, optarg, sdopts.so_targetsz);
+				opt_stoi(option, optarg, sdopts.so_targetsz);
 				if (sdopts.so_targetsz && sdopts.so_targetsz < 33554432)
 					warning("leaving very little free RAM");
 				break;
 			case 't':
-				opt_strtolx(ul, option, optarg, sdopts.so_threads);
+				opt_stoi(option, optarg, sdopts.so_threads);
 				break;
 			default:
 				/* Ignore it.
@@ -402,21 +494,21 @@ int main(int argc, char* argv[])
 	
 	prepare(&sdopts);
 	
-	pthread_attr_t thread_attr;
-	pthread_attr_init(&thread_attr);
-	pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
+	::pthread_attr_t thread_attr;
+	::pthread_attr_init(&thread_attr);
+	::pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
 	
-	pthread_t* threads = calloc(sdopts.so_threads, sizeof(*threads));
+	auto threads = new pthread_t[sdopts.so_threads];
 	if (!threads)
 		error("failed to allocate thread handles");
 	for (__u32 i = 0; i < sdopts.so_threads; ++i) {
-		if (pthread_create(&threads[i], &thread_attr, drain, (void*)&sdopts))
+		if (::pthread_create(&threads[i], &thread_attr, drain, (void*)&sdopts))
 			error("failed to create thread #%u", i);
 	}
 	for (__u32 i = 0; i < sdopts.so_threads; ++i) {
-		pthread_join(threads[i], NULL);
+		::pthread_join(threads[i], NULL);
 	}
 	
-	exit(EXIT_SUCCESS);
+	std::exit(EXIT_SUCCESS);
 }
 

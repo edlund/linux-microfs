@@ -1,6 +1,6 @@
 
-# microfs - Minimally Improved Compressed Read Only File System
-# Copyright (C) 2013 Erik Edlund <erik.edlund@32767.se>
+# sysdrain - Drain CPU and RAM for fun and profit
+# Copyright (C) 2014 Erik Edlund <erik.edlund@32767.se>
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,16 +22,16 @@ ifndef INSTALL_PATH
 INSTALL_PATH := /usr/local/bin
 endif
 
-CFLAGS += \
+CXXFLAGS += \
 	-Wall \
 	-Wextra \
 	-pedantic \
-	-std=c11 \
+	-std=c++11 \
 	-D_GNU_SOURCE \
 	-D_FILE_OFFSET_BITS=64
 
 ifdef DEBUG
-CFLAGS += -ggdb
+CXXFLAGS += -ggdb
 $(info DEBUG build)
 endif
 
@@ -39,29 +39,15 @@ LDFLAGS += \
 	-lrt \
 	-pthread
 
-all: devtck devtmk frd
-
-devtck: devtck.c ../hostprogs.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-
-devtmk: devtmk.c ../hostprogs.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-
-frd: frd.c ../hostprogs.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+all:
+	g++ $(CXXFLAGS) sysdrain.cpp $(LDFLAGS) -o sysdrain
 
 clean:
-	rm -f devtck
-	rm -f devtmk
-	rm -f frd
+	rm -f sysdrain
 
 install:
-	cp $(PWD)/devtck $(INSTALL_PATH)
-	cp $(PWD)/devtmk $(INSTALL_PATH)
-	cp $(PWD)/frd $(INSTALL_PATH)
+	cp $(PWD)/sysdrain $(INSTALL_PATH)
 
 uninstall:
-	rm $(INSTALL_PATH)/devtck 
-	rm $(INSTALL_PATH)/devtmk
-	rm $(INSTALL_PATH)/frd
+	rm $(INSTALL_PATH)/sysdrain
 

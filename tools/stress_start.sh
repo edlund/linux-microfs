@@ -46,6 +46,6 @@ sysdrain_params=(
 	"-m \"${mempercentage}\""
 	"-M \"${memvalue}\""
 )
-eval "${script_dir}/sysdrain ${sysdrain_params[@]} &"
+eval "sysdrain ${sysdrain_params[@]} &"
 echo $! > "${sysdrain_pid}"
 

@@ -181,10 +181,16 @@ clean:
 # Usage: make check [CHECKARGS="..."]
 # 
 check: all
+	make -C $(PWD)/vendor/sysdrain all install \
+		"DEBUG=$(DEBUG)" \
+		"INSTALL_PATH=$(VENDOR_BIN)"
 	$(PWD)/vendor/lut/manage.sh -i -p "$(VENDOR_BIN)"
 	export PATH="$(PATH):$(VENDOR_BIN)" ; \
 		$(PWD)/test ; \
 		$(PWD)/test.sh $(CHECKARGS)
+	$(PWD)/vendor/lut/manage.sh -u -p "$(VENDOR_BIN)"
+	make -C $(PWD)/vendor/sysdrain uninstall clean \
+		"INSTALL_PATH=$(VENDOR_BIN)"
 
 # Usage: make remotecheck \
 #     REMOTEHOST="localhost" REMOTEPORT="2222" REMOTEUSER="erik" \
