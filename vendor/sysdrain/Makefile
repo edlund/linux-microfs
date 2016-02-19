@@ -27,7 +27,6 @@ CXXFLAGS += \
 	-Wextra \
 	-pedantic \
 	-std=c++11 \
-	-D_GNU_SOURCE \
 	-D_FILE_OFFSET_BITS=64
 
 ifdef DEBUG
@@ -36,7 +35,6 @@ $(info DEBUG build)
 endif
 
 LDFLAGS += \
-	-lrt \
 	-pthread
 
 all:
