@@ -45,6 +45,7 @@
 #include <time.h>
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <unistd.h>
 
 #ifdef ENV_UNIX
@@ -283,10 +284,10 @@ static void prepare(struct sysdrainoptions& sdopts)
 	::sysinfo(&sysi);
 	free_ram = sysi.freeram;
 #else
-    MEMORYSTATUSEX status;
-    status.dwLength = sizeof(status);
-    ::GlobalMemoryStatusEx(&status);
-    free_ram = status.ullTotalPhys;
+	MEMORYSTATUSEX status;
+	status.dwLength = sizeof(status);
+	::GlobalMemoryStatusEx(&status);
+	free_ram = status.ullTotalPhys;
 #endif
 	message(VERBOSITY_1, "\n");
 	message(VERBOSITY_1, "free ram: %llu", free_ram);
@@ -304,12 +305,12 @@ static void prepare(struct sysdrainoptions& sdopts)
 	}
 	
 	if (print_percentage) {
-		message(VERBOSITY_1, "percent request: %lu%%",
+		message(VERBOSITY_1, "percent request: %" PRIu64 "%%",
 			sdopts.so_targetpercent);
 	}
-	message(VERBOSITY_1, "drain target: %lu", sdopts.so_targetsz);
-	message(VERBOSITY_1, "drain ceiling: %lu", sdopts.so_ceilsz);
-	message(VERBOSITY_1, "drain floor: %lu", sdopts.so_floorsz);
+	message(VERBOSITY_1, "drain target: %" PRIu64, sdopts.so_targetsz);
+	message(VERBOSITY_1, "drain ceiling: %" PRIu64, sdopts.so_ceilsz);
+	message(VERBOSITY_1, "drain floor: %" PRIu64, sdopts.so_floorsz);
 }
 
 static void handle_more_memory(struct sysdrain& drain,
@@ -335,12 +336,12 @@ static void handle_more_memory(struct sysdrain& drain,
 			drain.d_end += 1;
 			drain.d_memsz += new_slotsz;
 			
-			message(VERBOSITY_2, "slot %lu filled with %lu bytes",
+			message(VERBOSITY_2, "slot %" PRIu64 " filled with %" PRIu64 " bytes",
 				new_slot, new_slotsz);
 		}
 		catch (std::exception& e) {
-			message(VERBOSITY_1, "failed to satisfy request for %lu bytes"
-				" for slot %lu (%s)", new_slotsz, new_slot, e.what());
+			message(VERBOSITY_1, "failed to satisfy request for %" PRIu64 " bytes"
+				" for slot %" PRIu64 " (%s)", new_slotsz, new_slot, e.what());
 		}
 		
 		steps--;
@@ -367,7 +368,7 @@ static void handle_less_memory(struct sysdrain& drain,
 		drain.d_end -= 1;
 		drain.d_memsz -= slotsz;
 		
-		message(VERBOSITY_2, "%lu bytes freed from slot %lu",
+		message(VERBOSITY_2, "%" PRIu64 " bytes freed from slot %" PRIu64,
 			slotsz, slot);
 		
 		steps--;
@@ -387,7 +388,7 @@ static void handle_memory(struct sysdrain& drain,
 		else
 			handle_less_memory(drain, sdopts, 64);
 	}
-	message(VERBOSITY_2, "drained bytes: %lu", drain.d_memsz);
+	message(VERBOSITY_2, "drained bytes: %" PRIu64, drain.d_memsz);
 }
 
 static void handle_workload(struct sysdrain& drain,
@@ -428,9 +429,9 @@ static void drain(const struct sysdrainoptions& sdopts)
 	drain.d_lcl_floorsz = sdopts.so_floorsz / sdopts.so_threads;
 	
 	message(VERBOSITY_1, "\n[drainaddr=%p] thread spawned\n"
-			"\tdrain target: %lu\n"
-			"\tdrain ceiling: %lu\n"
-			"\tdrain floor: %lu\n",
+			"\tdrain target: %" PRIu64 "\n"
+			"\tdrain ceiling: %" PRIu64 "\n"
+			"\tdrain floor: %" PRIu64 "\n",
 		(void*)&drain,
 		drain.d_lcl_targetsz,
 		drain.d_lcl_ceilsz,
@@ -506,7 +507,7 @@ int main(int argc, char* argv[])
 					optarg[optarglen - 1] = '\0';
 				opt_stoi(option, optarg, sdopts.so_targetpercent);
 				if (sdopts.so_targetpercent < 10 || sdopts.so_targetpercent > 90)
-					error("invalid memory drain request: %lu%%\n",
+					error("invalid memory drain request: %" PRIu64 "%%\n",
 						sdopts.so_targetpercent);
 				break;
 			case 'M':
