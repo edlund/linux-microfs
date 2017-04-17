@@ -84,11 +84,13 @@ static int __microfs_copy_metadata(struct super_block* sb,
 	pr_spam("__microfs_copy_metadata: offset=0x%x, length=%u\n",
 		offset, length);
 	
-	for (i = 0, buf_offset = 0, destbuf->d_used = 0;
-			i < nbhs && buf_offset < length;
-			i += 1, buf_offset += PAGE_CACHE_SIZE) {
-		destbuf->d_used += PAGE_CACHE_SIZE;
-		memcpy(destbuf->d_data + buf_offset, bhs[i]->b_data, PAGE_CACHE_SIZE);
+	for (
+		i = 0, buf_offset = 0, destbuf->d_used = 0;
+		i < nbhs && buf_offset < length;
+		i += 1, buf_offset += PAGE_SIZE
+	) {
+		destbuf->d_used += PAGE_SIZE;
+		memcpy(destbuf->d_data + buf_offset, bhs[i]->b_data, PAGE_SIZE);
 	}
 	
 	return 0;
@@ -174,9 +176,9 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 	}
 	
 	for (page = 0, buf_offset = 0, remaining = decompressed; page < rdreq->rr_npages;
-			page += 1, buf_offset += PAGE_CACHE_SIZE) {
-		available = min_t(__u32, remaining, PAGE_CACHE_SIZE);
-		unused = PAGE_CACHE_SIZE - available;
+			page += 1, buf_offset += PAGE_SIZE) {
+		available = min_t(__u32, remaining, PAGE_SIZE);
+		unused = PAGE_SIZE - available;
 		remaining -= available;
 		
 		if (rdreq->rr_pages[page]) {
@@ -287,15 +289,15 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 	if (sbi->si_decompressor->dc_end(sbi, decompressor, &err, &implerr, &decompressed) < 0)
 		goto err_inflate;
 	
-	unused = (rdreq->rr_npages * PAGE_CACHE_SIZE) - decompressed;
+	unused = (rdreq->rr_npages * PAGE_SIZE) - decompressed;
 	if (unused) {
 		page = rdreq->rr_npages - 1;
 		do {
 			void* page_data = kmap(rdreq->rr_pages[page]);
-			__u32 page_avail = min_t(__u32, unused, PAGE_CACHE_SIZE);
+			__u32 page_avail = min_t(__u32, unused, PAGE_SIZE);
 			pr_spam("__microfs_copy_filedata_nominally: zeroing %u bytes for page %u\n",
 				page_avail, page);
-			memset(page_data + (PAGE_CACHE_SIZE - page_avail), 0, page_avail);
+			memset(page_data + (PAGE_SIZE - page_avail), 0, page_avail);
 			kunmap(rdreq->rr_pages[page]);
 			page -= 1;
 			unused -= page_avail;
@@ -342,9 +344,9 @@ int __microfs_read_blks(struct super_block* sb,
 	if (recycler(sb, data, offset, length, consumer) == 0)
 		goto out_cachehit;
 	
-	blk_offset = offset - (offset & PAGE_CACHE_MASK);
+	blk_offset = offset - (offset & PAGE_MASK);
 	
-	nbhs = i_blks(blk_offset + length, PAGE_CACHE_SIZE);
+	nbhs = i_blks(blk_offset + length, PAGE_SIZE);
 	bhs = kmalloc(nbhs * sizeof(void*), GFP_KERNEL);
 	if (!bhs) {
 		pr_err("__microfs_read_blks: failed to allocate bhs (%u slots)\n", nbhs);
@@ -352,8 +354,8 @@ int __microfs_read_blks(struct super_block* sb,
 		goto err_mem;
 	}
 	
-	blk_nr = offset >> PAGE_CACHE_SHIFT;
-	dev_blks = sb->s_bdev->bd_inode->i_size >> PAGE_CACHE_SHIFT;
+	blk_nr = offset >> PAGE_SHIFT;
+	dev_blks = sb->s_bdev->bd_inode->i_size >> PAGE_SHIFT;
 	
 	pr_spam("__microfs_read_blks: offset=0x%x, blk_offset=%u, length=%u\n",
 		offset, blk_offset, length);
@@ -439,7 +441,7 @@ void* __microfs_read(struct super_block* sb,
 	
 #undef ABORT_READ_ON
 	
-	data_offset = offset & PAGE_CACHE_MASK;
+	data_offset = offset & PAGE_MASK;
 	buf_offset = offset - data_offset;
 	
 	/* %destbuf will not be updated if an error is encountered.
@@ -462,7 +464,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 	struct microfs_sb_info* sbi = MICROFS_SB(sb);
 	
 	int err = 0;
-	int small_blks = sbi->si_blksz <= PAGE_CACHE_SIZE;
+	int small_blks = sbi->si_blksz <= PAGE_SIZE;
 	
 	__u32 i;
 	__u32 j;
@@ -476,13 +478,13 @@ int __microfs_readpage(struct file* file, struct page* page)
 	
 	__u32 blk_ptrs = i_blks(i_size_read(inode), sbi->si_blksz);
 	__u32 blk_nr = small_blks?
-		page->index * (PAGE_CACHE_SIZE >> sbi->si_blkshift):
-		page->index / (sbi->si_blksz / PAGE_CACHE_SIZE);
+		page->index * (PAGE_SIZE >> sbi->si_blkshift):
+		page->index / (sbi->si_blksz / PAGE_SIZE);
 	
 	int index_mask = small_blks?
-		0: (1 << (sbi->si_blkshift - PAGE_CACHE_SHIFT)) - 1;
+		0: (1 << (sbi->si_blkshift - PAGE_SHIFT)) - 1;
 	
-	__u32 max_index = i_blks(i_size_read(inode), PAGE_CACHE_SIZE);
+	__u32 max_index = i_blks(i_size_read(inode), PAGE_SIZE);
 	__u32 start_index = (small_blks? page->index: page->index & ~index_mask);
 	__u32 end_index = (small_blks? page->index: start_index | index_mask) + 1;
 	
@@ -497,8 +499,8 @@ int __microfs_readpage(struct file* file, struct page* page)
 		start_index, end_index, max_index);
 	
 	mutex_lock(&sbi->si_metadata_blkptrbuf.d_mutex);
-	for (i = 0; (data_length < PAGE_CACHE_SIZE && blk_nr + i < blk_ptrs) &&
-			(i == 0 || sbi->si_blksz < PAGE_CACHE_SIZE); ++i) {
+	for (i = 0; (data_length < PAGE_SIZE && blk_nr + i < blk_ptrs) &&
+			(i == 0 || sbi->si_blksz < PAGE_SIZE); ++i) {
 		err = __microfs_find_block(sb, inode, blk_ptrs, blk_nr + i,
 			&blk_data_offset, &blk_data_length);
 		if (unlikely(err)) {
@@ -514,7 +516,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 	pr_spam("__microfs_readpage: data_offset=0x%x, data_length=%u\n",
 		data_offset, data_length);
 	
-	rdreq.rr_bhoffset = data_offset - (data_offset & PAGE_CACHE_MASK);
+	rdreq.rr_bhoffset = data_offset - (data_offset & PAGE_MASK);
 	rdreq.rr_npages = end_index - start_index;
 	rdreq.rr_pages = kmalloc(rdreq.rr_npages * sizeof(void*), GFP_KERNEL);
 	if (!rdreq.rr_pages) {

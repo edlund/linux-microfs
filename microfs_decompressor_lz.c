@@ -34,8 +34,8 @@ struct decompressor_lz_data {
 int decompressor_lz_create(struct microfs_sb_info* sbi,
 	void** dest, __u32 upperbound)
 {
-	__u32 outputbufsz = max_t(__u32, sbi->si_blksz, PAGE_CACHE_SIZE);
-	__u32 inputbufsz = max_t(__u32, upperbound, PAGE_CACHE_SIZE * 2);
+	__u32 outputbufsz = max_t(__u32, sbi->si_blksz, PAGE_SIZE);
+	__u32 inputbufsz = max_t(__u32, upperbound, PAGE_SIZE * 2);
 	
 	struct decompressor_lz_data* data = kmalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -158,7 +158,7 @@ int decompressor_lz_consumebhs(struct microfs_sb_info* sbi, void* data,
 		pr_spam("decompressor_lz_consumebhs: *bh=%u, bhs[*bh]=0x%p, nbhs=%u\n",
 			*bh, bhs[*bh], nbhs);
 		
-		bh_avail = min_t(__u32, *length, PAGE_CACHE_SIZE - *bh_offset);
+		bh_avail = min_t(__u32, *length, PAGE_SIZE - *bh_offset);
 		pr_spam("decompressor_lz_consumebhs: *bh_offset=%u, *bh_avail=%u\n",
 			*bh_offset, bh_avail);
 		
@@ -233,9 +233,9 @@ int decompressor_lz_end(struct microfs_sb_info* sbi, void* data,
 		 */
 		for (i = 0, avail = 0, offset = 0;
 				i < lzdata->lz_npages && outputsz > 0;
-				i += 1, offset += PAGE_CACHE_SIZE) {
+				i += 1, offset += PAGE_SIZE) {
 			void* page_data = kmap_atomic(lzdata->lz_pages[i]);
-			avail = min_t(__u32, outputsz, PAGE_CACHE_SIZE);
+			avail = min_t(__u32, outputsz, PAGE_SIZE);
 			
 			pr_spam("decompressor_lz_end: i=%d, offset=%u, avail=%u, outputsz=%u\n",
 				i, offset, avail, outputsz);

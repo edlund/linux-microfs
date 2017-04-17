@@ -266,9 +266,9 @@ One should probably avoid stress testing.
 
 ## Performance
 
-Obviously every block size tested larger than `PAGE_CACHE_SIZE`
-will mostly be interesting to compare `microfs` with `squashfs`,
-`cramfs` will still use `PAGE_CACHE_SIZE` sized blocks.
+Obviously every block size tested larger than `PAGE_SIZE` will
+mostly be interesting to compare `microfs` with `squashfs`,
+`cramfs` will still use `PAGE_SIZE` sized blocks.
 
 The result presented by the benchmark tools is the average
 time that a test took over `N` passes. The idea is that the

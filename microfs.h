@@ -305,8 +305,8 @@ typedef int (*microfs_read_blks_recycler)(struct super_block* sb,
 	void* data, __u32 offset, __u32 length,
 	microfs_read_blks_consumer consumer);
 
-/* Read PAGE_CACHE_SIZEd blocks from the image. %consumer will
- * be called once the requested blocks have been read and is
+/* Read PAGE_SIZEd blocks from the image. %consumer will be
+ * called once the requested blocks have been read and is
  * responsible for doing something useful with them. %recycler
  * will check if it is possible to give %consumer the requested
  * data from a cache instead of reading it from the image.

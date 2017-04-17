@@ -82,11 +82,11 @@ static __u64 select_bufsz(const char* const name, int requested,
 			name, requested, minimum);
 		return minimum;
 	}
-	if (requested % PAGE_CACHE_SIZE != 0) {
+	if (requested % PAGE_SIZE != 0) {
 		pr_warn("%s=%d, but it must be a multiple of %u\n",
-			name, requested, (__u32)PAGE_CACHE_SIZE);
+			name, requested, (__u32)PAGE_SIZE);
 	}
-	return sz_blkceil(requested, PAGE_CACHE_SIZE);
+	return sz_blkceil(requested, PAGE_SIZE);
 }
 
 static int microfs_parse_options(char* options, struct microfs_sb_info* const sbi,
@@ -223,24 +223,24 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
  * station... This is mostly here so that it is possible to
  * easily read the super block using a single sb_bread()-call.
  */
-#if PAGE_CACHE_SIZE < 1024
-#error "PAGE_CACHE_SIZE is too small"
+#if PAGE_SIZE < 1024
+#error "PAGE_SIZE is too small"
 #endif
-	
+
 /* It is unnecessary to stop someone who really want this to
  * work, but do warn them.
  */
-#if PAGE_CACHE_SIZE > MICROFS_MAXBLKSZ
-#warning "PAGE_CACHE_SIZE greater than MICROFS_MAXBLKSZ is not supported"
+#if PAGE_SIZE > MICROFS_MAXBLKSZ
+#warning "PAGE_SIZE greater than MICROFS_MAXBLKSZ is not supported"
 #endif
 	
-	/* The metadata buffers must span at least two PAGE_CACHE_SIZE
+	/* The metadata buffers must span at least two PAGE_SIZE
 	 * sized VFS "blocks" so that poor data alignment does not
 	 * cause oob errors (data starting in one VFS block and ending
 	 * at the start of the adjoining block).
 	 */
-	mount_opts.mo_metadata_blkptrbufsz = PAGE_CACHE_SIZE * 2;
-	mount_opts.mo_metadata_dentrybufsz = PAGE_CACHE_SIZE * 2;
+	mount_opts.mo_metadata_blkptrbufsz = PAGE_SIZE * 2;
+	mount_opts.mo_metadata_dentrybufsz = PAGE_SIZE * 2;
 	mount_opts.mo_decompressor_data_creator = microfs_decompressor_data_singleton_create;
 	mount_opts.mo_decompressor_data_acquirer = microfs_decompressor_data_manager_acquire_private;
 	mount_opts.mo_debug_cksig = 0;
@@ -251,16 +251,16 @@ static int microfs_fill_super(struct super_block* sb, void* data, int silent)
 		goto err_sbi;
 	}
 	
-	if (sb->s_bdev->bd_inode->i_size % PAGE_CACHE_SIZE != 0) {
-		pr_err("device size is not a multiple of PAGE_CACHE_SIZE\n");
+	if (sb->s_bdev->bd_inode->i_size % PAGE_SIZE != 0) {
+		pr_err("device size is not a multiple of PAGE_SIZE\n");
 		err = -EINVAL;
 		goto err_sbi;
 	}
 	
-	sb_blksz = sb_set_blocksize(sb, PAGE_CACHE_SIZE);
+	sb_blksz = sb_set_blocksize(sb, PAGE_SIZE);
 	if (!sb_blksz) {
-		pr_err("failed to set the block size to PAGE_CACHE_SIZE"
-			" (%llu bytes)\n", (__u64)PAGE_CACHE_SIZE);
+		pr_err("failed to set the block size to PAGE_SIZE"
+			" (%llu bytes)\n", (__u64)PAGE_SIZE);
 		err = -EIO;
 		goto err_sbi;
 	}
@@ -351,7 +351,7 @@ sb_retry:
 	 * size.
 	 */
 	if ((err = create_data_buffer(&sbi->si_filedatabuf,
-			max_t(__u32, sbi->si_blksz, PAGE_CACHE_SIZE), "sbi->si_filedatabuf")) < 0)
+			max_t(__u32, sbi->si_blksz, PAGE_SIZE), "sbi->si_filedatabuf")) < 0)
 		goto err_filedatabuf;
 	
 	if ((err = create_data_buffer(&sbi->si_metadata_blkptrbuf,

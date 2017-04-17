@@ -170,7 +170,7 @@ static int decompressor_xz_copy_nominally_utilizepage(struct microfs_sb_info* sb
 	if (page) {
 		xzdat->xz_pageaddr = kmap_atomic(page);
 		xzdat->xz_buf.out = xzdat->xz_pageaddr;
-		xzdat->xz_buf.out_size = PAGE_CACHE_SIZE;
+		xzdat->xz_buf.out_size = PAGE_SIZE;
 		xzdat->xz_buf.out_pos = 0;
 	} else {
 		xzdat->xz_buf.out = NULL;
@@ -208,7 +208,7 @@ static int decompressor_xz_consumebhs(struct microfs_sb_info* sbi,
 		if (xzdat->xz_buf.in_size == xzdat->xz_buf.in_pos) {
 			pr_spam("decompressor_xz_consumebhs: *bh=%u, bhs[*bh]=0x%p\n", *bh, bhs[*bh]);
 			xzdat->xz_buf.in_pos = 0;
-			xzdat->xz_buf.in_size = min_t(__u32, *length, PAGE_CACHE_SIZE - *bh_offset);
+			xzdat->xz_buf.in_size = min_t(__u32, *length, PAGE_SIZE - *bh_offset);
 			xzdat->xz_buf.in = bhs[*bh]->b_data + *bh_offset;
 			*bh += 1;
 			*length -= xzdat->xz_buf.in_size;

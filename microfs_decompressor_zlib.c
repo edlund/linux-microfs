@@ -130,7 +130,7 @@ static int decompressor_zlib_copy_nominally_utilizepage(struct microfs_sb_info* 
 	if (page) {
 		zdata->z_pageaddr = kmap_atomic(page);
 		zdata->z_strm.next_out = zdata->z_pageaddr;
-		zdata->z_strm.avail_out = PAGE_CACHE_SIZE;
+		zdata->z_strm.avail_out = PAGE_SIZE;
 	} else {
 		zdata->z_strm.next_out = NULL;
 	}
@@ -163,7 +163,7 @@ static int decompressor_zlib_consumebhs(struct microfs_sb_info* sbi,
 	do {
 		if (zdata->z_strm.avail_in == 0) {
 			pr_spam("decompressor_zlib_consumebhs: *bh=%u, bhs[*bh]=0x%p\n", *bh, bhs[*bh]);
-			zdata->z_strm.avail_in = min_t(__u32, *length, PAGE_CACHE_SIZE - *bh_offset);
+			zdata->z_strm.avail_in = min_t(__u32, *length, PAGE_SIZE - *bh_offset);
 			zdata->z_strm.next_in = bhs[*bh]->b_data + *bh_offset;
 			*bh += 1;
 			*length -= zdata->z_strm.avail_in;

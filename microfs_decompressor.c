@@ -61,8 +61,8 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd,
 	}
 	
 	if (decompressors[i]->dc_info->li_min_blksz == 0 &&
-			sbi->si_blksz < PAGE_CACHE_SIZE) {
-		pr_err("%s: block size must be greater than or equal to PAGE_CACHE_SIZE",
+			sbi->si_blksz < PAGE_SIZE) {
+		pr_err("%s: block size must be greater than or equal to PAGE_SIZE",
 			decompressors[i]->dc_info->li_name);
 		err = -ENOSYS;
 		goto err;

@@ -86,11 +86,11 @@ struct inode* microfs_get_inode(struct super_block* sb,
 static int microfs_readpage(struct file* file, struct page* page)
 {
 	struct inode* inode = page->mapping->host;
-	if (page->index < i_blks(i_size_read(inode), PAGE_CACHE_SIZE)) {
+	if (page->index < i_blks(i_size_read(inode), PAGE_SIZE)) {
 		return __microfs_readpage(file, page);
 	} else {
 		void* page_data = kmap(page);
-		memset(page_data, 0, PAGE_CACHE_SIZE);
+		memset(page_data, 0, PAGE_SIZE);
 		kunmap(page);
 		flush_dcache_page(page);
 		SetPageUptodate(page);
