@@ -47,21 +47,21 @@ EOF
 	exit 1
 fi
 
-img_src="${workdir}/decompressor_data_manager"
-img_file="${img_src}.img"
-
-"mklndir.sh" "${img_src}" > /dev/null
-atexit_0 rm -rf "${img_src}"
-
-"${top_dir}/microfsmki" "${img_src}" "${img_file}" > /dev/null
-atexit_0 rm "${img_file}"
-
 postfixes=(
 	"a"
 	"b"
 )
 for postfix in "${postfixes[@]}" ; do
-	img_mount="${img_src}.mount-${postfix}"
+	img_src="${workdir}/decompressor_data_manager-${postfix}"
+	img_file="${img_src}.img"
+
+	"mklndir.sh" "${img_src}" > /dev/null
+	atexit_0 rm -rf "${img_src}"
+
+	"${top_dir}/microfsmki" "${img_src}" "${img_file}" > /dev/null
+	atexit_0 rm "${img_file}"
+	
+	img_mount="${img_src}.mount"
 	mkdir "${img_mount}"
 	atexit_0 rmdir "${img_mount}"
 	
@@ -74,7 +74,9 @@ for postfix in "${postfixes[@]}" ; do
 		"-o `implode "," ${img_mountopts[@]}`"
 		"-t microfs"
 	)
-	eval "sudo mount ${img_mountopts[@]} \"${img_file}\" \"${img_mount}\""
+	img_cmd="sudo mount ${img_mountopts[@]} \"${img_file}\" \"${img_mount}\""
+	echo "${img_cmd}"
+	eval "${img_cmd}"
 	atexit sudo umount "${img_mount}"
 done
 
