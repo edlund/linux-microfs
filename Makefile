@@ -123,7 +123,7 @@ test-objs := \
 	test_master.o \
 	test_hostprogs.o \
 	hostprogs.o
-HOSTLOADLIBES_test := -lcheck -lm -lrt -lpthread
+HOSTLOADLIBES_test := -lcheck -lsubunit -lm -lrt -lpthread
 
 HOSTPROG_LIBS := -lz -lpthread
 HOSTLOADLIBES_microfscki += $(HOSTPROG_LIBS)
