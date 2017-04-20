@@ -64,13 +64,7 @@ target that it would require extra effort to develop against.
 
 Supported kernels at the time of writing:
 
- * Ubuntu: `3.13.0-x-generic` (14.04, "Trusty Tahr")
- * Ubuntu: `3.19.0-x-generic` (15.04, "Vivid Vervet")
- * Ubuntu: `4.0.0-homebrew` (15.04, "Vivid Vervet")
- * Ubuntu: `4.1.0-homebrew` (15.04, "Vivid Vervet")
- * Debian: `3.13-0.bpo.x-486` (7, "Wheezy")
- * Debian: `3.13-0.bpo.x-amd64` (7, "Wheezy")
- * Raspbian: `3.10-x-rpi` (Raspbian kernel)
+ * Ubuntu: `4.10.0-x-generic` (17.04, "Zesty Zapus")
 
 It may well work with other versions and other dists, but that
 has not been tested.
