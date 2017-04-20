@@ -99,6 +99,8 @@ static int microfs_parse_options(char* options, struct microfs_sb_info* const sb
 	
 	(void)sbi;
 	
+	pr_spam("microfs_parse_options: options=(%s)\n", options);
+
 	while (options && (part = strsep(&options, ",")) != NULL) {
 		int token;
 		int option;

@@ -96,15 +96,21 @@ int microfs_decompressor_data_manager_acquire_public(struct microfs_sb_info* sbi
 	
 	mutex_lock(&__manager_mutex);
 	list_for_each_entry(walker, &__manager_list, dd_sharelist) {
-		if (walker->dd_blksz == sbi->si_blksz &&
-				walker->dd_decompressor == sbi->si_decompressor &&
-				walker->dd_creator == creator) {
+		if (
+			walker->dd_blksz == sbi->si_blksz &&
+			walker->dd_decompressor == sbi->si_decompressor &&
+			walker->dd_creator == creator
+		) {
 			*dest = walker;
 			break;
 		}
 	}
 	
 	if (!*dest) {
+		if (__debug_insid()) {
+			pr_info("[insid=%d] microfs_decompressor_data_manager_acquire_public:"
+				" share not possible\n", __debug_insid());
+		}
 		err = microfs_decompressor_data_manager_acquire_private(sbi, dd,
 			dest, creator);
 		if (err)
