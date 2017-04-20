@@ -52,6 +52,7 @@ struct inode* microfs_get_inode(struct super_block* sb,
 			vinode->i_fop = &microfs_dir_i_fops;
 			break;
 		case S_IFLNK:
+			inode_nohighmem(vinode);
 			vinode->i_op = &page_symlink_inode_operations;
 			vinode->i_data.a_ops = &microfs_i_a_ops;
 			break;
