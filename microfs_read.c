@@ -382,7 +382,7 @@ int __microfs_read_blks(struct super_block* sb,
 		}
 	}
 	
-	ll_rw_block(READ, n, bhs);
+	ll_rw_block(REQ_OP_READ, 0, n, bhs);
 	
 	pr_spam("__microfs_read_blks: bhs submitted for reading\n");
 	
@@ -540,7 +540,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 			pr_spam("__microfs_readpage: busy page at index %u\n", j);
 		} else if (PageUptodate(rdreq.rr_pages[i])) {
 			unlock_page(rdreq.rr_pages[i]);
-			page_cache_release(rdreq.rr_pages[i]);
+			put_page(rdreq.rr_pages[i]);
 			rdreq.rr_pages[i] = NULL;
 			pgholes++;
 			pr_spam("__microfs_readpage: page up to date at index %u\n", j);
@@ -581,7 +581,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 			SetPageUptodate(rdreq.rr_pages[i]);
 			unlock_page(rdreq.rr_pages[i]);
 			if (rdreq.rr_pages[i] != page)
-				page_cache_release(rdreq.rr_pages[i]);
+				put_page(rdreq.rr_pages[i]);
 		}
 	}
 	
@@ -597,7 +597,7 @@ err_io:
 			SetPageError(rdreq.rr_pages[i]);
 			unlock_page(rdreq.rr_pages[i]);
 			if (rdreq.rr_pages[i] != page)
-				page_cache_release(rdreq.rr_pages[i]);
+				put_page(rdreq.rr_pages[i]);
 		}
 	}
 	kfree(rdreq.rr_pages);
