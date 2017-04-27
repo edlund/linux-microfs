@@ -18,6 +18,7 @@ packages=(
 	"gdb"
 	"liblz4-dev"
 	"liblzo2-dev"
+	"liblzma-dev"
 	"perl"
 	# extras
 	"cramfsprogs"
