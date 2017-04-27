@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Copyright (C) 2013 Erik Edlund <erik.edlund@32767.se>
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017
+# Erik Edlund <erik.edlund@32767.se>
 # 
 # Redistribution and use in source and binary forms, with or
 # without modification, are permitted provided that the

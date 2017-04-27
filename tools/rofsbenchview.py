@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # coding: UTF-8
 
-# Copyright (C) 2014 Erik Edlund <erik.edlund@32767.se>
+# Copyright (C) 2012, 2013, 2014, 2015, 2016, 2017
+# Erik Edlund <erik.edlund@32767.se>
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
