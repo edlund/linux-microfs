@@ -43,10 +43,8 @@ __MICROFS_BEGIN_EXTERN_C
 
 #include "microfs_compat.h"
 
-#ifdef DEBUG_SPAM
-#ifndef pr_spam
+#if defined(DEBUG) && defined(DEBUG_SPAM) && !defined(pr_spam)
 #define pr_spam(fmt, ...) pr_devel(fmt, ##__VA_ARGS__)
-#endif
 #else
 #ifndef pr_spam
 #define pr_spam(fmt, ...)

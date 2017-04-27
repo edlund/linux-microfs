@@ -58,6 +58,10 @@ ifeq ($(DEBUG_SPAM),1)
 ccflags-y += -DDEBUG_SPAM
 $(info DEBUG_SPAM build)
 endif
+ifeq ($(DEBUG_READS),1)
+ccflags-y += -DDEBUG_READS
+$(info DEBUG_READS build)
+endif
 ifeq ($(DEBUG_INODES),1)
 ccflags-y += -DDEBUG_INODES
 $(info DEBUG_INODES build)

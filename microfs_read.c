@@ -1,5 +1,6 @@
 /* microfs - Minimally Improved Compressed Read Only File System
- * Copyright (C) 2014 Erik Edlund <erik.edlund@32767.se>
+ * Copyright (C) 2013, 2014, 2015, 2016, 2017
+ * Erik Edlund <erik.edlund@32767.se>
  * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +18,14 @@
  */
 
 #include "microfs.h"
+
+#if defined(DEBUG) && defined(DEBUG_READS) && !defined(pr_read)
+#define pr_read(fmt, ...) pr_devel(fmt, ##__VA_ARGS__)
+#else
+#ifndef pr_read
+#define pr_read(fmt, ...)
+#endif
+#endif
 
 struct microfs_readpage_request {
 	struct page** rr_pages;
@@ -61,7 +70,7 @@ static int __microfs_find_block(struct super_block* const sb,
 	*blk_data_length = __le32_to_cpu(*(__le32*)buf_data)
 		- *blk_data_offset;
 	
-	pr_spam("microfs_find_block: blk_data_offset=0x%x, blk_data_length=%u\n",
+	pr_read("microfs_find_block: blk_data_offset=0x%x, blk_data_length=%u\n",
 		*blk_data_offset, *blk_data_length);
 	
 err_io:
@@ -81,7 +90,7 @@ static int __microfs_copy_metadata(struct super_block* sb,
 	(void)nbhs;
 	(void)offset;
 	
-	pr_spam("__microfs_copy_metadata: offset=0x%x, length=%u\n",
+	pr_read("__microfs_copy_metadata: offset=0x%x, length=%u\n",
 		offset, length);
 	
 	for (
@@ -144,7 +153,7 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 		goto err_dd_get;
 	}
 	
-	pr_spam("__microfs_copy_filedata_exceptionally: offset=0x%x, length=%u\n",
+	pr_read("__microfs_copy_filedata_exceptionally: offset=0x%x, length=%u\n",
 		offset, length);
 	
 	if (bhs) {
@@ -170,7 +179,7 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 		sbi->si_filedatabuf.d_used = decompressed;
 	} else {
 		decompressed = sbi->si_filedatabuf.d_used;
-		pr_spam("__microfs_copy_filedata_exceptionally: cache hit for offset 0x%x"
+		pr_read("__microfs_copy_filedata_exceptionally: cache hit for offset 0x%x"
 			" - %u bytes already decompressed in sbi->si_filedatabuf\n",
 				offset, decompressed);
 	}
@@ -183,11 +192,11 @@ static int __microfs_copy_filedata_exceptionally(struct super_block* sb,
 		
 		if (rdreq->rr_pages[page]) {
 			void* page_data = kmap(rdreq->rr_pages[page]);
-			pr_spam("__microfs_copy_filedata_exceptionally: buf_offset=%u, remaining=%u\n",
+			pr_read("__microfs_copy_filedata_exceptionally: buf_offset=%u, remaining=%u\n",
 				buf_offset, remaining);
-			pr_spam("__microfs_copy_filedata_exceptionally: copying %u bytes to page %u\n",
+			pr_read("__microfs_copy_filedata_exceptionally: copying %u bytes to page %u\n",
 				available, page);
-			pr_spam("__microfs_copy_filedata_exceptionally: zeroing %u bytes for page %u\n",
+			pr_read("__microfs_copy_filedata_exceptionally: zeroing %u bytes for page %u\n",
 				unused, page);
 			memcpy(page_data, sbi->si_filedatabuf.d_data + buf_offset, available);
 			memset(page_data + available, 0, unused);
@@ -219,7 +228,7 @@ static int __microfs_recycle_filedata_exceptionally(struct super_block* sb,
 			cached = 1;
 			err = consumer(sb, data, NULL, 0, offset, length);
 		} else {
-			pr_spam("__microfs_recycle_filedata_exceptionally:"
+			pr_read("__microfs_recycle_filedata_exceptionally:"
 				" near cache miss at offset 0x%x (hit stolen)\n", offset);
 		}
 		mutex_unlock(&sbi->si_filedatabuf.d_mutex);
@@ -253,7 +262,7 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 		goto err_dd_get;
 	}
 	
-	pr_spam("__microfs_copy_filedata_nominally: offset=0x%x, length=%u\n",
+	pr_read("__microfs_copy_filedata_nominally: offset=0x%x, length=%u\n",
 		offset, length);
 	
 	sbi->si_decompressor->dc_reset(sbi, decompressor);
@@ -295,7 +304,7 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 		do {
 			void* page_data = kmap(rdreq->rr_pages[page]);
 			__u32 page_avail = min_t(__u32, unused, PAGE_SIZE);
-			pr_spam("__microfs_copy_filedata_nominally: zeroing %u bytes for page %u\n",
+			pr_read("__microfs_copy_filedata_nominally: zeroing %u bytes for page %u\n",
 				page_avail, page);
 			memset(page_data + (PAGE_SIZE - page_avail), 0, page_avail);
 			kunmap(rdreq->rr_pages[page]);
@@ -357,9 +366,9 @@ int __microfs_read_blks(struct super_block* sb,
 	blk_nr = offset >> PAGE_SHIFT;
 	dev_blks = sb->s_bdev->bd_inode->i_size >> PAGE_SHIFT;
 	
-	pr_spam("__microfs_read_blks: offset=0x%x, blk_offset=%u, length=%u\n",
+	pr_read("__microfs_read_blks: offset=0x%x, blk_offset=%u, length=%u\n",
 		offset, blk_offset, length);
-	pr_spam("__microfs_read_blks: nbhs=%u, blk_nr=%u, dev_blks=%u\n",
+	pr_read("__microfs_read_blks: nbhs=%u, blk_nr=%u, dev_blks=%u\n",
 		nbhs, blk_nr, dev_blks);
 	
 	for (i = 0, n = 0; i < nbhs; ++i) {
@@ -371,7 +380,7 @@ int __microfs_read_blks(struct super_block* sb,
 				err = -EIO;
 				goto err_bhs;
 			} else {
-				pr_spam("__microfs_read_blks: got bh 0x%p for block %u\n",
+				pr_read("__microfs_read_blks: got bh 0x%p for block %u\n",
 					bhs[n - 1], blk_nr + i);
 			}
 		} else {
@@ -384,7 +393,7 @@ int __microfs_read_blks(struct super_block* sb,
 	
 	ll_rw_block(REQ_OP_READ, 0, n, bhs);
 	
-	pr_spam("__microfs_read_blks: bhs submitted for reading\n");
+	pr_read("__microfs_read_blks: bhs submitted for reading\n");
 	
 	for (i = 0; i < n; ++i) {
 		wait_on_buffer(bhs[i]);
@@ -395,15 +404,15 @@ int __microfs_read_blks(struct super_block* sb,
 		}
 	}
 	
-	pr_spam("__microfs_read_blks: reading complete\n");
+	pr_read("__microfs_read_blks: reading complete\n");
 	
 	err = consumer(sb, data, bhs, n, offset, length);
 	
-	pr_spam("__microfs_read_blks: processing complete\n");
+	pr_read("__microfs_read_blks: processing complete\n");
 	
 err_bhs:
 	for (i = 0; i < n; ++i) {
-		pr_spam("__microfs_read_blks: releasing bh 0x%p\n", bhs[i]);
+		pr_read("__microfs_read_blks: releasing bh 0x%p\n", bhs[i]);
 		put_bh(bhs[i]);
 	}
 	kfree(bhs);
@@ -493,9 +502,9 @@ int __microfs_readpage(struct file* file, struct page* page)
 	if (end_index > max_index)
 		end_index = max_index;
 	
-	pr_spam("__microfs_readpage: sbi->si_blksz=%u, blk_ptrs=%u, blk_nr=%u\n",
+	pr_read("__microfs_readpage: sbi->si_blksz=%u, blk_ptrs=%u, blk_nr=%u\n",
 		sbi->si_blksz, blk_ptrs, blk_nr);
-	pr_spam("__microfs_readpage: start_index=%u, end_index=%u, max_index=%u\n",
+	pr_read("__microfs_readpage: start_index=%u, end_index=%u, max_index=%u\n",
 		start_index, end_index, max_index);
 	
 	mutex_lock(&sbi->si_metadata_blkptrbuf.d_mutex);
@@ -513,7 +522,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 	}
 	mutex_unlock(&sbi->si_metadata_blkptrbuf.d_mutex);
 	
-	pr_spam("__microfs_readpage: data_offset=0x%x, data_length=%u\n",
+	pr_read("__microfs_readpage: data_offset=0x%x, data_length=%u\n",
 		data_offset, data_length);
 	
 	rdreq.rr_bhoffset = data_offset - (data_offset & PAGE_MASK);
@@ -526,31 +535,31 @@ int __microfs_readpage(struct file* file, struct page* page)
 		goto err_mem;
 	}
 	
-	pr_spam("__microfs_readpage: rdreq.rr_pages=0x%p, rdreq.rr_npages=%u\n",
+	pr_read("__microfs_readpage: rdreq.rr_pages=0x%p, rdreq.rr_npages=%u\n",
 		rdreq.rr_pages, rdreq.rr_npages);
 	
 	for (i = 0, j = start_index; j < end_index; ++i, ++j) {
 		rdreq.rr_pages[i] = (j == page->index)?
 			page: grab_cache_page_nowait(page->mapping, j);
 		if (rdreq.rr_pages[i] == page) {
-			pr_spam("__microfs_readpage: target page 0x%p at index %u\n",
+			pr_read("__microfs_readpage: target page 0x%p at index %u\n",
 				page, j);
 		} else if (rdreq.rr_pages[i] == NULL) {
 			pgholes++;
-			pr_spam("__microfs_readpage: busy page at index %u\n", j);
+			pr_read("__microfs_readpage: busy page at index %u\n", j);
 		} else if (PageUptodate(rdreq.rr_pages[i])) {
 			unlock_page(rdreq.rr_pages[i]);
 			put_page(rdreq.rr_pages[i]);
 			rdreq.rr_pages[i] = NULL;
 			pgholes++;
-			pr_spam("__microfs_readpage: page up to date at index %u\n", j);
+			pr_read("__microfs_readpage: page up to date at index %u\n", j);
 		} else {
-			pr_spam("__microfs_readpage: new page 0x%p added for index %u\n",
+			pr_read("__microfs_readpage: new page 0x%p added for index %u\n",
 				rdreq.rr_pages[i], j);
 		}
 	}
 	
-	pr_spam("__microfs_readpage: pgholes=%u\n", pgholes);
+	pr_read("__microfs_readpage: pgholes=%u\n", pgholes);
 	
 	if (pgholes) {
 		/* It seems that one or more pages have been reclaimed, but
@@ -590,7 +599,7 @@ int __microfs_readpage(struct file* file, struct page* page)
 	return 0;
 	
 err_io:
-	pr_spam("__microfs_readpage: failure\n");
+	pr_read("__microfs_readpage: failure\n");
 	for (i = 0; i < rdreq.rr_npages; ++i) {
 		if (rdreq.rr_pages[i]) {
 			flush_dcache_page(rdreq.rr_pages[i]);
