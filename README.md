@@ -114,6 +114,10 @@ also need the following things in order to compile successfully:
  * inotify-tools (>=3.14), https://github.com/rvoicilas/inotify-tools (opt)
  * tmpfs (>=3.11.0), https://www.kernel.org/ (opt)
 
+(To get a quick and dirty dev environment up and running, you
+can try `make devenv`, which will try to figure out what Linux
+dist you are running and install the necessary packages.)
+
 Once the build environment is set up it is sufficient to run
 `make` from the root source directory to build the lkm and the
 hostprogs with zlib support.

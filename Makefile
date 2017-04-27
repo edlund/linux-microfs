@@ -217,3 +217,6 @@ uninstall:
 	make -C $(PWD)/tools -f Makefile.extra uninstall INSTALL_PATH=$(INSTALL_HOSTPROG_PATH)
 	rm $(INSTALL_HOSTPROG_PATH)/microfscki
 	rm $(INSTALL_HOSTPROG_PATH)/microfsmki
+
+devenv:
+	$(PWD)/vendor/lut/sh/lsb_runner.sh -p "extras/packages"
