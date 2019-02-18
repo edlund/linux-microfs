@@ -5,7 +5,7 @@ script_dir=`dirname "${script_path}"`
 
 packages=(
 	# required
-	"check"
+    "check"
 	"gcc"
 	"g++"
 	"git"
@@ -22,7 +22,6 @@ packages=(
 	"liblzma-dev"
 	"perl"
 	# extras
-	"cramfsprogs"
 	"inotify-tools"
 	"squashfs-tools"
 )
