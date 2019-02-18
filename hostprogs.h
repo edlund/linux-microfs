@@ -45,6 +45,7 @@
 
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/types.h>
 
 #include <linux/types.h>
