@@ -27,21 +27,25 @@
 
 static int decompressor_lz4_create(struct microfs_sb_info* sbi, void** dest)
 {
-	return decompressor_lz_create(sbi, dest, lz4_compressbound(sbi->si_blksz));
+	return decompressor_lz_create(sbi, dest, LZ4_compressBound(sbi->si_blksz));
 }
 
 static int decompressor_lzo_end_consumer(struct microfs_sb_info* sbi, void* data,
 	int* implerr, char* input, __u32 inputsz, char* output, __u32* outputsz)
 {
-	size_t lz4_outputsz = *outputsz;
+	int lz4_result = 0;
+	int lz4_outputsz = *outputsz;
 	
 	(void)sbi;
 	(void)data;
 	
-	*implerr = lz4_decompress_unknownoutputsize(input, inputsz, output, &lz4_outputsz);
-	*outputsz = lz4_outputsz;
-	
-	return *implerr < 0? -EIO: 0;
+	lz4_result = LZ4_decompress_safe(input, output, inputsz, lz4_outputsz);
+	if (lz4_result < 0) {
+		*implerr = lz4_result;
+		return -EIO;
+	}
+	*outputsz = lz4_result;
+	return 0;
 }
 
 static int decompressor_lz4_end(struct microfs_sb_info* sbi, void* data,
