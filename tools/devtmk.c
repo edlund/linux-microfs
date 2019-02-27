@@ -84,11 +84,11 @@ static void usage(const char* const exe)
 int main(int argc, char* argv[])
 {
 	if (argc < 5)
-		usage(argc > 0? argv[0]: "devtmk");
+		usage(argc > 0 ? argv[0] : "devtmk");
 	
 	int argn = 1;
 	int devbits = 0;
-	opt_strtolx(l, '1', argv[argn], devbits);
+	opt_strtolx(l, "<1>", argv[argn], devbits);
 	
 	char* devtablefile = argv[++argn];
 	char* rootdir = argv[++argn];

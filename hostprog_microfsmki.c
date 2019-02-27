@@ -365,7 +365,7 @@ static inline void set_dataoffset(struct entry* const ent, char* base,
 
 static inline __u64 superblock_offset(const struct imgspec* const spec)
 {
-	return spec->sp_pad? MICROFS_PADDING: 0;
+	return spec->sp_pad ? MICROFS_PADDING : 0;
 }
 
 static void write_superblock(struct imgspec* const spec, char* base,
@@ -378,7 +378,7 @@ static void write_superblock(struct imgspec* const spec, char* base,
 	struct microfs_sb* sb = (struct microfs_sb*)(base + padding);
 	
 	sb->s_magic = __cpu_to_le32(MICROFS_MAGIC);
-	sb->s_size = sz == MICROFS_MAXIMGSIZE? 0: __cpu_to_le32(sz);
+	sb->s_size = sz == MICROFS_MAXIMGSIZE ? 0 : __cpu_to_le32(sz);
 	sb->s_crc = 0;
 	sb->s_blocks = __cpu_to_le32((sz - 1) / spec->sp_blksz + 1);
 	sb->s_files = __cpu_to_le16(spec->sp_files);
@@ -557,7 +557,7 @@ static void pack_data(struct imgspec* const spec, struct entry* ent,
 	
 	do {
 		__u32 compr_sz = spec->sp_compressionbufsz;
-		__u32 compr_input = ent_sz > spec->sp_blksz? spec->sp_blksz: ent_sz;
+		__u32 compr_input = ent_sz > spec->sp_blksz ? spec->sp_blksz : ent_sz;
 		ent_sz -= compr_input;
 		
 		int implerr = 0;
@@ -862,7 +862,7 @@ static void usage(const char* const exe, FILE* const dest,
 		}
 	}
 	
-	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
+	exit(dest == stderr ? EXIT_FAILURE : EXIT_SUCCESS);
 }
 
 static void lib_options(struct imgspec* spec)
@@ -907,12 +907,13 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 	spec->sp_szpad = spec->sp_pagesz;
 	
 	if (argc < 2)
-		usage(argc > 0? argv[0]: "microfsmki", stderr, spec);
+		usage(argc > 0 ? argv[0] : "microfsmki", stderr, spec);
 	
 	/* Check what the user want.
 	 */
 	
 	int option;
+	char optionbuffer[3];
 	while ((option = getopt(argc, argv, MKI_OPTIONS)) != EOF) {
 		size_t len;
 		switch (option) {
@@ -938,7 +939,8 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 				spec->sp_shareblocks = 0;
 				break;
 			case 'b':
-				opt_strtolx(ul, option, optarg, spec->sp_blksz);
+				opt_strtolx(ul, optiontostr(option, optionbuffer),
+					optarg, spec->sp_blksz);
 				if (!microfs_ispow2(spec->sp_blksz))
 					error("the block size must be a power of two");
 				if (spec->sp_blksz < MICROFS_MINBLKSZ ||
@@ -949,10 +951,12 @@ static struct imgspec* create_imgspec(int argc, char* argv[])
 				}
 				break;
 			case 'u':
-				opt_strtolx(ull, option, optarg, spec->sp_usrupperbound);
+				opt_strtolx(ull, optiontostr(option, optionbuffer),
+					optarg, spec->sp_usrupperbound);
 				break;
 			case 'P':
-				opt_strtolx(ull, option, optarg, spec->sp_szpad);
+				opt_strtolx(ull, optiontostr(option, optionbuffer),
+					optarg, spec->sp_szpad);
 				if (!microfs_ispow2(spec->sp_szpad))
 					error("the size padding must be a power of two");
 				break;

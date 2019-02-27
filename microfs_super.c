@@ -33,7 +33,8 @@ MODULE_ALIAS_FS("microfs");
 		defined(MICROFS_DECOMPRESSOR_ZLIB) || \
 		defined(MICROFS_DECOMPRESSOR_LZ4)  || \
 		defined(MICROFS_DECOMPRESSOR_LZO)  || \
-		defined(MICROFS_DECOMPRESSOR_XZ)      \
+		defined(MICROFS_DECOMPRESSOR_XZ)   || \
+		defined(MICROFS_DECOMPRESSOR_ZSTD)    \
 	)
 #error "pointless build, see README"
 #endif
@@ -395,7 +396,7 @@ sb_retry:
 err_root_offset:
 	/* Fall-through. */
 err_decompressor_init:
-	if (sbi->si_decompressor_data)
+	if (sbi->si_decompressor_data && sbi->si_decompressor_data->dd_release)
 		sbi->si_decompressor_data->dd_release(sbi);
 err_metadata_dentrybuf:
 	destroy_data_buffer(&sbi->si_metadata_dentrybuf);

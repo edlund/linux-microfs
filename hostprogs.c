@@ -164,7 +164,7 @@ int hostprog_path_create(struct hostprog_path** dpath, const char* dname,
 	
 	(*dpath)->p_path[0] = '\0';
 	
-	return dname? hostprog_path_append(*dpath, dname): 0;
+	return dname ? hostprog_path_append(*dpath, dname) : 0;
 	
 err_stack_nomem:
 err_path_nomem:
@@ -315,7 +315,7 @@ int hostprog_path_dirname(struct hostprog_path* const dpath)
 	}
 	int separators = hostprog_stack_size(dpath->p_separators);
 	if (separators == 0 && *dpath->p_path == '/') {
-		dpath->p_pathlen = dpath->p_pathlen > 1? 1: 0;
+		dpath->p_pathlen = dpath->p_pathlen > 1 ? 1 : 0;
 		dpath->p_path[dpath->p_pathlen] = '\0';
 	} else if (dpath->p_pathlen > 0) {
 		hostprog_stack_int_t dir = 0;

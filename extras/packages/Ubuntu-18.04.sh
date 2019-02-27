@@ -5,7 +5,8 @@ script_dir=`dirname "${script_path}"`
 
 packages=(
 	# required
-    "check"
+	"build-essential"
+	"check"
 	"gcc"
 	"g++"
 	"git"
@@ -20,6 +21,7 @@ packages=(
 	"liblz4-dev"
 	"liblzo2-dev"
 	"liblzma-dev"
+	"libzstd-dev"
 	"perl"
 	# extras
 	"inotify-tools"

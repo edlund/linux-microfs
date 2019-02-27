@@ -107,10 +107,10 @@ enum {
 		errno = 0; \
 		Var = strto##Postfix(Arg, &endptr, 10); \
 		if (*endptr != '\0') { \
-			error("arg -%c is not an integer (%c=%s)", \
+			error("arg %s is not an integer (%s=%s)", \
 				Opt, Opt, Arg); \
 		} else if (errno) { \
-			error("arg -%c: %s (%c=%s)", Opt, strerror(errno), \
+			error("arg %s: %s (%s=%s)", Opt, strerror(errno), \
 				Opt, Arg); \
 		} \
 	} while (0)
@@ -119,15 +119,23 @@ enum {
 	({ \
 		__typeof__ (a) a_ = a; \
 		__typeof__ (b) b_ = b; \
-		a_ < b_? b_: a_; \
+		a_ < b_ ? b_ : a_; \
 	})
 
 #define min(a, b) \
 	({ \
 		__typeof__ (a) a_ = a; \
 		__typeof__ (b) b_ = b; \
-		a_ < b_? a_: b_; \
+		a_ < b_ ? a_ : b_; \
 	})
+
+static inline char* optiontostr(int option, char* buffer)
+{
+	buffer[0] = '-';
+	buffer[1] = option;
+	buffer[2] = '\0';
+	return buffer;
+}
 
 static inline char nodtype(const mode_t mode)
 {

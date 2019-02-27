@@ -35,7 +35,8 @@ int main(int argc, char* argv[])
 	
 	srunner_free(sr);
 	
-	return failures == 0?
-		EXIT_SUCCESS: EXIT_FAILURE;
+	return failures == 0
+		? EXIT_SUCCESS
+		: EXIT_FAILURE;
 }
 

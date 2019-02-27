@@ -24,7 +24,6 @@
 
 static const struct libinfo libinfo_lzo = {
 	.li_id = MICROFS_FLAG_DECOMPRESSOR_LZO,
-	.li_streaming = 0,
 	.li_min_blksz = 0,
 	.li_max_blksz = MICROFS_MAXBLKSZ,
 	.li_dd_sz = 0,

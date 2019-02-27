@@ -234,7 +234,7 @@ static int hostprog_lib_xz_compress(void* data, void* destbuf, __u32* destbufsz,
 		memcpy(destbuf, best_filter->f_buf, best_filter->f_bufsz);
 	
 err:
-	return *implerr == LZMA_OK? 0: -1;
+	return *implerr == LZMA_OK ? 0 : -1;
 }
 
 static int hostprog_lib_xz_decompress(void* data, void* destbuf, __u32* destbufsz,
@@ -250,7 +250,7 @@ static int hostprog_lib_xz_decompress(void* data, void* destbuf, __u32* destbufs
 	*implerr = lzma_stream_buffer_decode(&memlimit, 0, NULL,
 			srcbuf, &srcbufpos, srcbufsz, destbuf, &destbufpos, *destbufsz);
 	*destbufsz = destbufpos;
-	return *implerr == LZMA_OK && srcbufsz == srcbufpos? 0: -1;
+	return *implerr == LZMA_OK && srcbufsz == srcbufpos ? 0 : -1;
 }
 
 static __u32 hostprog_lib_xz_upperbound(void* data, __u32 size)

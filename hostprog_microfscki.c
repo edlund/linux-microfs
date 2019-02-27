@@ -116,13 +116,13 @@ static void usage(const char* const exe, FILE* const dest)
 		" imgfile     image file to check\n"
 		"\n", exe, CKI_OPTIONS, exe);
 	
-	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
+	exit(dest == stderr ? EXIT_FAILURE : EXIT_SUCCESS);
 }
 
 static struct imgdesc* create_imgdesc(int argc, char* argv[])
 {
 	if (argc < 2)
-		usage(argc > 0? argv[0]: "microfscki", stderr);
+		usage(argc > 0 ? argv[0] : "microfscki", stderr);
 	
 	struct imgdesc* desc = malloc(sizeof(*desc));
 	if (!desc)

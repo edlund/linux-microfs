@@ -121,6 +121,8 @@ static int decompressor_xz_exceptionally_begin(struct microfs_sb_info* sbi,
 	void* data)
 {
 	struct decompressor_xz_data* xzdat = data;
+
+	pr_spam("decompressor_xz_exceptionally_begin: xzdat=0x%p\n", xzdat);
 	
 	sbi->si_filedatabuf.d_offset = MICROFS_MAXIMGSIZE - 1;
 	sbi->si_filedatabuf.d_used = 0;
@@ -140,6 +142,8 @@ static int decompressor_xz_nominally_begin(struct microfs_sb_info* sbi,
 	void* data, struct page** pages, __u32 npages)
 {
 	struct decompressor_xz_data* xzdat = data;
+
+	pr_spam("decompressor_xz_nominally_begin: xzdat=0x%p\n", xzdat);
 	
 	(void)pages;
 	(void)npages;
@@ -189,7 +193,6 @@ static int decompressor_xz_copy_nominally_releasepage(struct microfs_sb_info* sb
 	return 0;
 }
 
-
 static int decompressor_xz_consumebhs(struct microfs_sb_info* sbi,
 	void* data, struct buffer_head** bhs, __u32 nbhs, __u32* length,
 	__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr)
@@ -218,11 +221,14 @@ static int decompressor_xz_consumebhs(struct microfs_sb_info* sbi,
 		
 		pr_spam("decompressor_xz_consumebhs: *length=%u\n", *length);
 		
-		pr_spam("decompressor_xz_consumebhs: pre; xzdat->xz_buf.out_size=%zu, xzdat->xz_buf.out=0x%p\n",
+		pr_spam("decompressor_xz_consumebhs: pre;"
+			" xzdat->xz_buf.out_size=%zu, xzdat->xz_buf.out=0x%p\n",
 			xzdat->xz_buf.out_size, xzdat->xz_buf.out);
-		pr_spam("decompressor_xz_consumebhs: pre; xzdat->xz_buf.in_size=%zu, xzdat->xz_buf.in=0x%p\n",
+		pr_spam("decompressor_xz_consumebhs: pre;"
+			" xzdat->xz_buf.in_size=%zu, xzdat->xz_buf.in=0x%p\n",
 			xzdat->xz_buf.in_size, xzdat->xz_buf.in);
-		pr_spam("decompressor_xz_consumebhs: pre: prev_out_pos=%u, xzdat->xz_totalout=%u\n",
+		pr_spam("decompressor_xz_consumebhs: pre;"
+			" prev_out_pos=%u, xzdat->xz_totalout=%u\n",
 			prev_out_pos, xzdat->xz_totalout);
 		
 		*implerr = xz_dec_run(xzdat->xz_state, &xzdat->xz_buf);
@@ -230,11 +236,14 @@ static int decompressor_xz_consumebhs(struct microfs_sb_info* sbi,
 		xzdat->xz_totalout += xzdat->xz_buf.out_pos - prev_out_pos;
 		prev_out_pos = xzdat->xz_buf.out_pos;
 		
-		pr_spam("decompressor_xz_consumebhs: post; xzdat->xz_buf.out_size=%zu, xzdat->xz_buf.out=0x%p\n",
+		pr_spam("decompressor_xz_consumebhs: post;"
+			" xzdat->xz_buf.out_size=%zu, xzdat->xz_buf.out=0x%p\n",
 			xzdat->xz_buf.out_size, xzdat->xz_buf.out);
-		pr_spam("decompressor_xz_consumebhs: post; xzdat->xz_buf.in_size=%zu, xzdat->xz_buf.in=0x%p\n",
+		pr_spam("decompressor_xz_consumebhs: post;"
+			" xzdat->xz_buf.in_size=%zu, xzdat->xz_buf.in=0x%p\n",
 			xzdat->xz_buf.in_size, xzdat->xz_buf.in);
-		pr_spam("decompressor_xz_consumebhs: post: prev_out_pos=%u, xzdat->xz_totalout=%u\n",
+		pr_spam("decompressor_xz_consumebhs: post;"
+			"prev_out_pos=%u, xzdat->xz_totalout=%u\n",
 			prev_out_pos, xzdat->xz_totalout);
 		
 		pr_spam("decompressor_xz_consumebhs: *implerr=%d\n", *implerr);
@@ -254,7 +263,7 @@ static int decompressor_xz_consumebhs(struct microfs_sb_info* sbi,
 		xzdat->xz_totalout = 0;
 		sbi->si_decompressor->dc_reset(sbi, data);
 	} else if (*implerr != XZ_OK) {
-		pr_err("decompressor_xz_consumebhs: failed to inflate data\n");
+		pr_err("decompressor_xz_consumebhs: failed to inflate data, implerr %d\n", *implerr);
 		err = -EIO;
 	}
 	
@@ -265,17 +274,15 @@ static int decompressor_xz_continue(struct microfs_sb_info* sbi,
 	void* data, int err, int implerr, __u32 length, int more_avail_out)
 {
 	struct decompressor_xz_data* xzdat = data;
-	return !err && (
-		implerr == XZ_OK || (
-			implerr == XZ_STREAM_END && (
-				xzdat->xz_buf.in_pos < xzdat->xz_buf.in_size ||
-					length > 0
-			) && (
-				xzdat->xz_buf.out_pos < xzdat->xz_buf.out_size ||
-					more_avail_out > 0
-			)
+	return !err && (implerr == XZ_OK || (
+		implerr == XZ_STREAM_END && (
+			xzdat->xz_buf.in_pos < xzdat->xz_buf.in_size ||
+				length > 0
+		) && (
+			xzdat->xz_buf.out_pos < xzdat->xz_buf.out_size ||
+				more_avail_out > 0
 		)
-	);
+	));
 }
 
 static int decompressor_xz_end(struct microfs_sb_info* sbi, void* data,
@@ -298,6 +305,7 @@ static int decompressor_xz_end(struct microfs_sb_info* sbi, void* data,
 const struct microfs_decompressor decompressor_xz = {
 	.dc_info = &libinfo_xz,
 	.dc_compiled = 1,
+	.dc_streamed = 1,
 	.dc_data_init = decompressor_xz_data_init,
 	.dc_data_exit = decompressor_xz_data_exit,
 	.dc_create = decompressor_xz_create,

@@ -35,6 +35,9 @@ endif
 ifndef LIB_XZ
 LIB_XZ := 0
 endif
+ifndef LIB_ZSTD
+LIB_ZSTD := 0
+endif
 
 ifndef INSTALL_HOSTPROG_PATH
 INSTALL_HOSTPROG_PATH := /usr/local/bin
@@ -79,11 +82,12 @@ microfs-y := \
 	microfs_decompressor_data_singleton.o \
 	microfs_decompressor_data_percpu.o \
 	microfs_decompressor_data_queue.o \
+	microfs_decompressor_impl_buffer.o \
 	microfs_decompressor_zlib.o \
-	microfs_decompressor_lz.o \
 	microfs_decompressor_lz4.o \
 	microfs_decompressor_lzo.o \
 	microfs_decompressor_xz.o \
+	microfs_decompressor_zstd.o \
 	microfs_inode.o \
 	microfs_compat.o
 
@@ -100,7 +104,8 @@ microfscki-objs := \
 	hostprogs_lib_zlib.o \
 	hostprogs_lib_lz4.o \
 	hostprogs_lib_lzo.o \
-	hostprogs_lib_xz.o
+	hostprogs_lib_xz.o \
+	hostprogs_lib_zstd.o
 HOSTLOADLIBES_microfscki := -lrt
 
 microfsmki-objs := \
@@ -110,7 +115,8 @@ microfsmki-objs := \
 	hostprogs_lib_zlib.o \
 	hostprogs_lib_lz4.o \
 	hostprogs_lib_lzo.o \
-	hostprogs_lib_xz.o
+	hostprogs_lib_xz.o \
+	hostprogs_lib_zstd.o
 HOSTLOADLIBES_microfsmki := -lrt
 
 microfslib-objs := \
@@ -120,7 +126,8 @@ microfslib-objs := \
 	hostprogs_lib_zlib.o \
 	hostprogs_lib_lz4.o \
 	hostprogs_lib_lzo.o \
-	hostprogs_lib_xz.o
+	hostprogs_lib_xz.o \
+	hostprogs_lib_zstd.o
 
 test-objs := \
 	test.o \
@@ -164,6 +171,15 @@ HOSTLOADLIBES_microfsmki += -llzma
 HOSTLOADLIBES_microfslib += -llzma
 ccflags-y += -DMICROFS_DECOMPRESSOR_XZ
 HOST_EXTRACFLAGS += -DHOSTPROGS_LIB_XZ
+endif
+
+ifeq ($(LIB_ZSTD),1)
+$(info -lzstd build)
+HOSTLOADLIBES_microfscki += -lzstd
+HOSTLOADLIBES_microfsmki += -lzstd
+HOSTLOADLIBES_microfslib += -lzstd
+ccflags-y += -DMICROFS_DECOMPRESSOR_ZSTD
+HOST_EXTRACFLAGS += -DHOSTPROGS_LIB_ZSTD
 endif
 
 always := $(hostprogs-y)

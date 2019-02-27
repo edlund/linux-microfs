@@ -233,7 +233,7 @@ static int __microfs_recycle_filedata_exceptionally(struct super_block* sb,
 		}
 		mutex_unlock(&sbi->si_filedatabuf.d_mutex);
 	}
-	return !err && cached? 0: -EIO;
+	return !err && cached ? 0 : -EIO;
 }
 
 static int __microfs_copy_filedata_nominally(struct super_block* sb,
@@ -279,7 +279,7 @@ static int __microfs_copy_filedata_nominally(struct super_block* sb,
 					sbi, decompressor, rdreq->rr_pages[page++]);
 			}
 			strm_release = sbi->si_decompressor->dc_copy_nominally_utilizepage(
-				sbi, decompressor, page < rdreq->rr_npages? rdreq->rr_pages[page]: NULL);
+				sbi, decompressor, page < rdreq->rr_npages ? rdreq->rr_pages[page] : NULL);
 		}
 		
 		err = sbi->si_decompressor->dc_consumebhs(sbi, decompressor,
@@ -486,16 +486,17 @@ int __microfs_readpage(struct file* file, struct page* page)
 	__u32 pgholes = 0;
 	
 	__u32 blk_ptrs = i_blks(i_size_read(inode), sbi->si_blksz);
-	__u32 blk_nr = small_blks?
-		page->index * (PAGE_SIZE >> sbi->si_blkshift):
-		page->index / (sbi->si_blksz / PAGE_SIZE);
+	__u32 blk_nr = small_blks
+		? page->index * (PAGE_SIZE >> sbi->si_blkshift)
+		: page->index / (sbi->si_blksz / PAGE_SIZE);
 	
-	int index_mask = small_blks?
-		0: (1 << (sbi->si_blkshift - PAGE_SHIFT)) - 1;
+	int index_mask = small_blks
+		? 0
+		: (1 << (sbi->si_blkshift - PAGE_SHIFT)) - 1;
 	
 	__u32 max_index = i_blks(i_size_read(inode), PAGE_SIZE);
-	__u32 start_index = (small_blks? page->index: page->index & ~index_mask);
-	__u32 end_index = (small_blks? page->index: start_index | index_mask) + 1;
+	__u32 start_index = (small_blks ? page->index : page->index & ~index_mask);
+	__u32 end_index = (small_blks ? page->index : start_index | index_mask) + 1;
 	
 	struct microfs_readpage_request rdreq;
 	
@@ -539,8 +540,9 @@ int __microfs_readpage(struct file* file, struct page* page)
 		rdreq.rr_pages, rdreq.rr_npages);
 	
 	for (i = 0, j = start_index; j < end_index; ++i, ++j) {
-		rdreq.rr_pages[i] = (j == page->index)?
-			page: grab_cache_page_nowait(page->mapping, j);
+		rdreq.rr_pages[i] = (j == page->index)
+			? page
+			: grab_cache_page_nowait(page->mapping, j);
 		if (rdreq.rr_pages[i] == page) {
 			pr_read("__microfs_readpage: target page 0x%p at index %u\n",
 				page, j);

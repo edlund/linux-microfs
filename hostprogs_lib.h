@@ -58,6 +58,7 @@ extern const struct hostprog_lib hostprog_lib_zlib;
 extern const struct hostprog_lib hostprog_lib_lz4;
 extern const struct hostprog_lib hostprog_lib_lzo;
 extern const struct hostprog_lib hostprog_lib_xz;
+extern const struct hostprog_lib hostprog_lib_zstd;
 
 const struct hostprog_lib* hostprog_lib_find_any(void);
 

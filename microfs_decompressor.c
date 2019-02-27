@@ -32,6 +32,7 @@ static const struct microfs_decompressor* decompressors[] = {
 	&decompressor_lz4,
 	&decompressor_lzo,
 	&decompressor_xz,
+	&decompressor_zstd,
 	&decompressor_null
 };
 
@@ -50,7 +51,8 @@ int microfs_decompressor_init(struct microfs_sb_info* sbi, char* dd,
 	}
 	
 	if (!decompressors[i]->dc_info) {
-		pr_err("failed to find a decompressor with id 0x%x\n", decompressor);
+		pr_err("failed to find a decompressor with id 0x%x\n",
+			decompressor);
 		err = -EINVAL;
 		goto err;
 	}

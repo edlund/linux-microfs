@@ -84,15 +84,14 @@ err_args:
 	return -1;
 }
 
-
 static int hostprog_lib_lz4_compress(void* data, void* destbuf, __u32* destbufsz,
 	void* srcbuf, __u32 srcbufsz, int* implerr)
 {
 	struct hostprog_lib_lz4_data* lz4_data = data;
 	
 	*implerr = lz4_data->d_compressor(srcbuf, destbuf, srcbufsz, *destbufsz);
-	*destbufsz = *implerr? *implerr: 0;
-	return *implerr != 0? 0: -1;
+	*destbufsz = *implerr ? *implerr : 0;
+	return *implerr != 0 ? 0 : -1;
 }
 
 static int hostprog_lib_lz4_decompress(void* data, void* destbuf, __u32* destbufsz,
@@ -102,8 +101,8 @@ static int hostprog_lib_lz4_decompress(void* data, void* destbuf, __u32* destbuf
 	
 	*implerr = LZ4_decompress_safe_partial(srcbuf, destbuf,
 		srcbufsz, *destbufsz, *destbufsz);
-	*destbufsz = *implerr? *implerr: 0;
-	return *implerr != 0? 0: -1;
+	*destbufsz = *implerr ? *implerr : 0;
+	return *implerr != 0 ? 0 : -1;
 }
 
 static __u32 hostprog_lib_lz4_upperbound(void* data, __u32 size)

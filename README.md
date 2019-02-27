@@ -44,7 +44,7 @@ The difference between `cramfs` and `microfs` lies in that `microfs`
  * Split the image into four main parts; 1) superblock, 2) inodes
    and dentries, 3) block pointers and 4) the compressed blocks.
    See the section "image format" for more information.
- * Support LZ4, LZO and XZ as alternatives to zlib.
+ * Support LZ4, LZO, XZ and ZSTD as alternatives to ZLIB.
 
 ## Licensing
 
@@ -62,9 +62,10 @@ kernel versions for popular distrubutions in the debian family.
 This is mostly because the upstream kernel is such a fast moving
 target that it would require extra effort to develop against.
 
-Supported kernels at the time of writing:
+Supported dists/kernels at the time of writing:
 
- * Ubuntu: `4.10.0-x-generic` (17.04, "Zesty Zapus")
+ * v0.2, Ubuntu: `4.10.0-x-generic` (17.04, "Zesty Zapus")
+ * v0.3, Ubuntu: `4.15.0-x-generic` (18.04, "Bionic Beaver")
 
 It may well work with other versions and other dists, but that
 has not been tested.
@@ -106,7 +107,8 @@ also need the following things in order to compile successfully:
  * zlib (>=1.2.7), http://www.zlib.net/
  * liblz4 (>=r94), http://code.google.com/p/lz4/ (opt)
  * liblzo (>=2.06), http://www.oberhumer.com/opensource/lzo/ (opt)
- * xz-utils (>=5.1), http://tukaani.org/xz/ (opt)
+ * liblzma (>=5.2), https://www.7-zip.org/sdk.html (opt)
+ * libzstd (>=1.3), https://github.com/facebook/zstd (opt)
  * python (>=2.7), http://www.python.org/
  * perl (>=5.14), http://www.perl.org/
  * cramfs-tools (>=1.1), http://sourceforge.net/projects/cramfs/ (opt)
@@ -120,20 +122,21 @@ dist you are running and install the necessary packages.)
 
 Once the build environment is set up it is sufficient to run
 `make` from the root source directory to build the lkm and the
-hostprogs with zlib support.
+hostprogs with ZLIB support.
 
 It is possible to control which compression libraries are supported
 by specifying `LIB_*`-params for make. Available options are:
 
- * `LIB_ZLIB`
  * `LIB_LZ4`
  * `LIB_LZO`
  * `LIB_XZ`
+ * `LIB_ZLIB`
+ * `LIB_ZSTD`
 
 For example, to add support for LZ4, simply use `make LIB_LZ4=1`.
 Please note that the hostprogs will always need zlib in order
 to compile, so specifying `LIB_ZLIB=0` will not allow `microfs` to
-compile in an environment where zlib is not installed.
+compile in an environment where ZLIB is not installed.
 
 Use the make command line argument `DEBUG=1` or the combination
 `DEBUG=1 DEBUG_SPAM=1` to do a debug build. Please note that a

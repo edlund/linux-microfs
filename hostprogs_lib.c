@@ -32,6 +32,7 @@ static const struct hostprog_lib* hostprog_libs[] = {
 	&hostprog_lib_lz4,
 	&hostprog_lib_lzo,
 	&hostprog_lib_xz,
+	&hostprog_lib_zstd,
 	&hostprog_lib_null
 };
 

@@ -89,7 +89,7 @@ static int hostprog_lib_zlib_compress(void* data, void* destbuf, __u32* destbufs
 {
 	*implerr = compress2((Bytef*)destbuf, (uLongf*)destbufsz,
 		(Bytef*)srcbuf, (uLongf)srcbufsz, *(int*)data);
-	return *implerr == Z_OK? 0: -1;
+	return *implerr == Z_OK ? 0 : -1;
 }
 
 static int hostprog_lib_zlib_decompress(void* data, void* destbuf, __u32* destbufsz,
@@ -99,7 +99,7 @@ static int hostprog_lib_zlib_decompress(void* data, void* destbuf, __u32* destbu
 	
 	*implerr = uncompress((Bytef*)destbuf, (uLongf*)destbufsz,
 		(Bytef*)srcbuf, (uLongf)srcbufsz);
-	return *implerr == Z_OK? 0: -1;
+	return *implerr == Z_OK ? 0 : -1;
 }
 
 static __u32 hostprog_lib_zlib_upperbound(void* data, __u32 size)

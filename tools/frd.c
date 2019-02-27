@@ -126,7 +126,7 @@ static void handle_read(struct readoptions* const rdopts, const char* path)
 		
 		close(rdfd);
 		
-		message(VERBOSITY_1, " rd[%c] %c %s", rdopts->ro_seqread? 's': 'r',
+		message(VERBOSITY_1, " rd[%c] %c %s", rdopts->ro_seqread ? 's' : 'r',
 			nodtype(st.st_mode), path);
 	} else {
 		message(VERBOSITY_1, " skipping %c %s", nodtype(st.st_mode), path);
@@ -259,6 +259,7 @@ int main(int argc, char* argv[])
 		error("failed to create the offset stack");
 	
 	int option;
+	char optionbuffer[3];
 	while ((option = getopt(argc, argv, FRD_OPTIONS)) != EOF) {
 		switch (option) {
 			case 'h':
@@ -283,15 +284,18 @@ int main(int argc, char* argv[])
 				rdopts.ro_infiniteloop = 1;
 				break;
 			case 's':
-				opt_strtolx(ul, option, optarg, rdopts.ro_seed);
+				opt_strtolx(ul, optiontostr(option, optionbuffer),
+					optarg, rdopts.ro_seed);
 				break;
 			case 'b':
-				opt_strtolx(ul, option, optarg, rdopts.ro_blksz);
+				opt_strtolx(ul, optiontostr(option, optionbuffer),
+					optarg, rdopts.ro_blksz);
 				if (!microfs_ispow2(rdopts.ro_blksz))
 					error("the block size must be a power of two");
 				break;
 			case 'w':
-				opt_strtolx(ul, option, optarg, rdopts.ro_workers);
+				opt_strtolx(ul, optiontostr(option, optionbuffer),
+					optarg, rdopts.ro_workers);
 				break;
 			case 'i':
 				add_paths_from(&rdopts, optarg);

@@ -49,8 +49,8 @@ static int hostprog_lib_lzo_compress(void* data, void* destbuf, __u32* destbufsz
 	
 	*implerr = lzo1x_999_compress(srcbuf, srcbufsz,
 		destbuf, &destsz, workmem);
-	*destbufsz = *implerr == LZO_E_OK? destsz: 0;
-	return *implerr == LZO_E_OK? 0: -1;
+	*destbufsz = *implerr == LZO_E_OK ? destsz : 0;
+	return *implerr == LZO_E_OK ? 0 : -1;
 }
 
 static int hostprog_lib_lzo_decompress(void* data, void* destbuf, __u32* destbufsz,
@@ -63,7 +63,7 @@ static int hostprog_lib_lzo_decompress(void* data, void* destbuf, __u32* destbuf
 	*implerr = lzo1x_decompress_safe(srcbuf, srcbufsz,
 		destbuf, &destsz, NULL);
 	*destbufsz = *implerr == LZO_E_OK? destsz: 0;
-	return *implerr == LZO_E_OK? 0: -1;
+	return *implerr == LZO_E_OK ? 0 : -1;
 }
 
 static __u32 hostprog_lib_lzo_upperbound(void* data, __u32 size)

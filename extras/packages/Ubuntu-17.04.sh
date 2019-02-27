@@ -5,6 +5,7 @@ script_dir=`dirname "${script_path}"`
 
 packages=(
 	# required
+	"build-essential"
 	"check"
 	"gcc"
 	"g++"

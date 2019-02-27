@@ -68,13 +68,14 @@ static void usage(const char* const exe, FILE* const dest)
 		" -c <str>    the name of the compression library to use\n"
 		"\n", exe, LIB_OPTIONS, exe, exe);
 	
-	exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
+	exit(dest == stderr ? EXIT_FAILURE : EXIT_SUCCESS);
 }
 
 static void print_blockszs(const struct hostprog_lib* lib, int (*filter)(__u32))
 {
-	const __u32 start = lib->hl_info->li_min_blksz == 0?
-		sysconf(_SC_PAGESIZE): lib->hl_info->li_min_blksz;
+	const __u32 start = lib->hl_info->li_min_blksz == 0
+		? sysconf(_SC_PAGESIZE)
+		: lib->hl_info->li_min_blksz;
 	
 	for (__u32 sz = start; sz <= lib->hl_info->li_max_blksz; sz *= 2) {
 		if (!filter || (filter && filter(sz)))

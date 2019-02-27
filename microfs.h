@@ -67,7 +67,7 @@ static inline int microfs_ispow2(const __u64 n)
  */
 static inline __u32 i_blks(const __u32 sz, const __u32 blksz)
 {
-	return sz == 0? 0: (sz - 1) / blksz + 1;
+	return sz == 0 ? 0 : (sz - 1) / blksz + 1;
 }
 
 /* Round up the given %size to a multiple of the given block
@@ -75,7 +75,7 @@ static inline __u32 i_blks(const __u32 sz, const __u32 blksz)
  */
 static inline __u32 sz_blkceil(const __u32 size, const __u32 blksz)
 {
-	return size == 0? blksz: ((size - 1) | (blksz - 1)) + 1;
+	return size == 0 ? blksz : ((size - 1) | (blksz - 1)) + 1;
 }
 
 #ifdef __KERNEL__
@@ -141,6 +141,8 @@ struct microfs_decompressor {
 	const struct libinfo* dc_info;
 	/* Decompressor compiled? */
 	const int dc_compiled;
+	/* Decompressor implemented using streaming? */
+	const int dc_streamed;
 	/* Called by microfs_decompressor_data_manager_get(). */
 	int (*dc_data_init)(struct microfs_sb_info* sbi, void* dd,
 		struct microfs_decompressor_data* data);
@@ -271,6 +273,7 @@ extern const struct microfs_decompressor decompressor_zlib;
 extern const struct microfs_decompressor decompressor_lz4;
 extern const struct microfs_decompressor decompressor_lzo;
 extern const struct microfs_decompressor decompressor_xz;
+extern const struct microfs_decompressor decompressor_zstd;
 
 static inline struct microfs_sb_info* MICROFS_SB(struct super_block* sb)
 {
@@ -283,7 +286,7 @@ static inline unsigned long microfs_get_ino(const struct microfs_inode*
 	const inode, const __u32 offset)
 {
 	const __u32 ioffset = __le32_to_cpu(inode->i_offset);
-	return ioffset? ioffset: offset + 1;
+	return ioffset ? ioffset : offset + 1;
 }
 
 static inline __u32 microfs_get_offset(const struct inode* const inode)
@@ -384,39 +387,35 @@ int microfs_decompressor_data_manager_acquire_public(struct microfs_sb_info* sbi
 	char* dd, struct microfs_decompressor_data** dest,
 	microfs_decompressor_data_creator creator);
 
-/* %microfs_decompressor op implementations used by LZ4
- * and LZO.
+/* %microfs_decompressor op implementations that are based
+ * on using a buffer instead of streaming when decompressing.
  */
-#if defined(MICROFS_DECOMPRESSOR_LZ4) || defined(MICROFS_DECOMPRESSOR_LZO)
-#define MICROFS_DECOMPRESSOR_LZ
 
-typedef int (*decompressor_lz_end_consumer)(struct microfs_sb_info* sbi,
+typedef int (*decompressor_impl_buffer_end_consumer)(struct microfs_sb_info* sbi,
 	void* data, int* implerr,
 	char* input, __u32 inputsz,
 	char* output, __u32* outputsz);
 
-int decompressor_lz_create(struct microfs_sb_info* sbi, void** dest, __u32 upperbound);
-int decompressor_lz_destroy(struct microfs_sb_info* sbi, void* data);
-int decompressor_lz_reset(struct microfs_sb_info* sbi, void* data);
-int decompressor_lz_exceptionally_begin(struct microfs_sb_info* sbi, void* data);
-int decompressor_lz_nominally_begin(struct microfs_sb_info* sbi,
+int decompressor_impl_buffer_create(struct microfs_sb_info* sbi, void** dest, __u32 upperbound);
+int decompressor_impl_buffer_destroy(struct microfs_sb_info* sbi, void* data);
+int decompressor_impl_buffer_reset(struct microfs_sb_info* sbi, void* data);
+int decompressor_impl_buffer_exceptionally_begin(struct microfs_sb_info* sbi, void* data);
+int decompressor_impl_buffer_nominally_begin(struct microfs_sb_info* sbi,
 	void* data, struct page** pages, __u32 npages);
-int decompressor_lz_copy_nominally_needpage(struct microfs_sb_info* sbi,
+int decompressor_impl_buffer_copy_nominally_needpage(struct microfs_sb_info* sbi,
 	void* data);
-int decompressor_lz_copy_nominally_utilizepage(struct microfs_sb_info* sbi,
+int decompressor_impl_buffer_copy_nominally_utilizepage(struct microfs_sb_info* sbi,
 	void* data, struct page* page);
-int decompressor_lz_copy_nominally_releasepage(struct microfs_sb_info* sbi,
+int decompressor_impl_buffer_copy_nominally_releasepage(struct microfs_sb_info* sbi,
 	void* data, struct page* page);
-int decompressor_lz_consumebhs(struct microfs_sb_info* sbi, void* data,
+int decompressor_impl_buffer_consumebhs(struct microfs_sb_info* sbi, void* data,
 	struct buffer_head** bhs, __u32 nbhs, __u32* length,
 	__u32* bh, __u32* bh_offset, __u32* inflated, int* implerr);
-int decompressor_lz_continue(struct microfs_sb_info* sbi, void* data,
+int decompressor_impl_buffer_continue(struct microfs_sb_info* sbi, void* data,
 	int err, int implerr, __u32 length, int more_avail_out);
-int decompressor_lz_end(struct microfs_sb_info* sbi, void* data,
+int decompressor_impl_buffer_end(struct microfs_sb_info* sbi, void* data,
 	int* err, int* implerr, __u32* decompressed,
-	decompressor_lz_end_consumer consumer);
-
-#endif
+	decompressor_impl_buffer_end_consumer consumer);
 
 /* Get the insert ID for this module insertion. Used by tests
  * to have additional information written to the syslog.

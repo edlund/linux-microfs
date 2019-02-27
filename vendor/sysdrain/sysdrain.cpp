@@ -242,8 +242,8 @@ static void drain_task_copy(struct sysdrain& drain)
 	std::uint64_t fromsz = std::min(slot_asz, slot_bsz);
 	std::uint64_t tosz = std::max(slot_asz, slot_bsz);
 	
-	char* from = drain.d_ptrslots[slot_asz < slot_bsz? slot_a: slot_b];
-	char* to = drain.d_ptrslots[slot_asz < slot_bsz? slot_b: slot_a];
+	char* from = drain.d_ptrslots[slot_asz < slot_bsz ? slot_a : slot_b];
+	char* to = drain.d_ptrslots[slot_asz < slot_bsz ? slot_b : slot_a];
 	
 	for (std::uint64_t offset = 0; offset < tosz; offset += fromsz) {
 		memcpy(to + offset, from, fromsz);
@@ -471,7 +471,7 @@ static void usage(const char* const exe, std::FILE* const dest)
 		" -t <int>  number of threads to use\n"
 		"\n", exe, SYSDRAIN_OPTIONS, exe);
 	
-	std::exit(dest == stderr? EXIT_FAILURE: EXIT_SUCCESS);
+	std::exit(dest == stderr ? EXIT_FAILURE : EXIT_SUCCESS);
 }
 
 int main(int argc, char* argv[])
