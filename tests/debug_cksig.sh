@@ -61,4 +61,4 @@ img_mountopts=(
 eval "sudo mount ${img_mountopts[@]} \"${img_file}\" \"${img_mount}\""
 atexit sudo umount "${img_mount}"
 
-eval "dmesg | grep -P \" \[insid=${insid}\] \w+: good superblock signature\""
+eval "sudo dmesg | grep -P \" \[insid=${insid}\] \w+: good superblock signature\""

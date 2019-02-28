@@ -81,4 +81,4 @@ for postfix in "${postfixes[@]}" ; do
 	atexit sudo umount "${img_mount}"
 done
 
-eval "dmesg | grep -P \" \[insid=${insid}\] \w+_acquire_public: successful share\""
+eval "sudo dmesg | grep -P \" \[insid=${insid}\] \w+_acquire_public: successful share\""

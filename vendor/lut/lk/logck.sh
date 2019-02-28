@@ -85,7 +85,7 @@ fi
 
 # Grab everything from the syslog starting from the notice
 # about the given mount id.
-dmesg | sed -n -e "/${mountid}/,\$p" > "${sys_log}"
+sudo dmesg | sed -n -e "/${mountid}/,\$p" > "${sys_log}"
 
 ck_path="${script_dir}/logck_${suffix}.sh"
 

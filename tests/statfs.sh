@@ -54,5 +54,5 @@ atexit sudo umount "${img_mount}"
 
 df -a "${img_mount}" > /dev/null
 
-eval "dmesg | grep -P \" \[insid=${insid}\] microfs_statfs: ok\""
+eval "sudo dmesg | grep -P \" \[insid=${insid}\] microfs_statfs: ok\""
 
