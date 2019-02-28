@@ -65,13 +65,13 @@ static std::size_t g_werror = 0;
 static std::mutex g_print_mutex;
 static std::mutex g_rand_mutex;
 
-static int rand_uniform_range(int min, int max)
+static std::uint64_t rand_uniform_range(std::uint64_t min, std::uint64_t max)
 {
 	static std::random_device rd;
 	static std::mt19937 mt(rd());
 	
 	std::lock_guard<std::mutex> lock(g_rand_mutex);
-	std::uniform_int_distribution<int> dist(min, max);
+	std::uniform_int_distribution<std::uint64_t> dist(min, max);
 	
 	return dist(mt);
 }
@@ -133,7 +133,7 @@ enum {
 
 static inline void* memrfrob(void *s, size_t n)
 {
-	auto p = reinterpret_cast<char*>(s);
+	auto p = reinterpret_cast<unsigned char*>(s);
 	while (n-- > 0)
 		*p++ ^= rand_uniform_range(0, 255);
 	return s;
@@ -178,11 +178,10 @@ typedef void (*drain_task)(struct sysdrain&);
 static void drain_task_memset(struct sysdrain& drain, int v)
 {
 	message(VERBOSITY_2, "drain_task_memset");
-	std::uint64_t slot = rand_uniform_range(0, drain.d_end);
-	std::uint64_t slotsz = drain.d_szslots[slot];
+	auto slot = rand_uniform_range(0, drain.d_end);
+	auto slotsz = drain.d_szslots[slot];
 	std::memset(drain.d_ptrslots[slot], v, slotsz);
 }
-
 
 static void drain_task_memset0(struct sysdrain& drain)
 {
@@ -200,12 +199,12 @@ static void drain_task_memsetX(struct sysdrain& drain)
 
 static void drain_task_read(struct sysdrain& drain, const char* path)
 {
-	int rdfd = ::open(path, O_RDONLY, 0);
+	auto rdfd = ::open(path, O_RDONLY, 0);
 	if (rdfd < 0) {
 		error("failed to open path \"%s\": %s", path, ::strerror(errno));
 	}
-	std::uint64_t slot = rand_uniform_range(0, drain.d_end);
-	std::uint64_t slotsz = drain.d_szslots[slot];
+	auto slot = rand_uniform_range(0, drain.d_end);
+	auto slotsz = drain.d_szslots[slot];
 	if (::read(rdfd, drain.d_ptrslots[slot], slotsz) < 0) {
 		error("failed to read \"%s\": %s", path, ::strerror(errno));
 	}
@@ -229,32 +228,34 @@ static void drain_task_read_devzero(struct sysdrain& drain)
 static void drain_task_copy(struct sysdrain& drain)
 {
 	message(VERBOSITY_2, "drain_task_copy");
-	std::uint64_t slot_a;
-	std::uint64_t slot_b;
-	do {
-		slot_a = rand_uniform_range(0, drain.d_end);
-		slot_b = rand_uniform_range(0, drain.d_end);
-	} while (slot_a == slot_b);
-	
-	std::uint64_t slot_asz = drain.d_szslots[slot_a];
-	std::uint64_t slot_bsz = drain.d_szslots[slot_b];
-	
-	std::uint64_t fromsz = std::min(slot_asz, slot_bsz);
-	std::uint64_t tosz = std::max(slot_asz, slot_bsz);
-	
-	char* from = drain.d_ptrslots[slot_asz < slot_bsz ? slot_a : slot_b];
-	char* to = drain.d_ptrslots[slot_asz < slot_bsz ? slot_b : slot_a];
-	
-	for (std::uint64_t offset = 0; offset < tosz; offset += fromsz) {
-		memcpy(to + offset, from, fromsz);
+	if (drain.d_end > 1) {
+		std::uint64_t slot_a;
+		std::uint64_t slot_b;
+		do {
+			slot_a = rand_uniform_range(0, drain.d_end);
+			slot_b = rand_uniform_range(0, drain.d_end);
+		} while (slot_a == slot_b);
+		
+		auto slot_asz = drain.d_szslots[slot_a];
+		auto slot_bsz = drain.d_szslots[slot_b];
+		
+		auto fromsz = std::min(slot_asz, slot_bsz);
+		auto tosz = std::max(slot_asz, slot_bsz);
+		
+		auto from = drain.d_ptrslots[slot_asz < slot_bsz ? slot_a : slot_b];
+		auto to = drain.d_ptrslots[slot_asz < slot_bsz ? slot_b : slot_a];
+		
+		for (std::uint64_t offset = 0; offset < tosz; offset += fromsz) {
+			std::memcpy(to + offset, from, fromsz);
+		}
 	}
 }
 
 static void drain_task_memrfrob(struct sysdrain& drain)
 {
 	message(VERBOSITY_2, "drain_task_memrfrob");
-	std::uint64_t slot = rand_uniform_range(0, drain.d_end);
-	std::uint64_t slotsz = drain.d_szslots[slot];
+	auto slot = rand_uniform_range(0, drain.d_end);
+	auto slotsz = drain.d_szslots[slot];
 	memrfrob(drain.d_ptrslots[slot], slotsz);
 }
 
@@ -263,7 +264,7 @@ static std::uint32_t nthreads(const struct sysdrainoptions& sdopts)
 	if (sdopts.so_threads)
 		return sdopts.so_threads;
 	else {
-		std::uint32_t threads = std::thread::hardware_concurrency();
+		auto threads = std::thread::hardware_concurrency();
 		if (!threads) {
 			warning("failed to get hardware concurrency, using 1 thread");
 			return 1;
@@ -277,12 +278,12 @@ static void prepare(struct sysdrainoptions& sdopts)
 	sdopts.so_threads = nthreads(sdopts);
 	
 	auto print_percentage = sdopts.so_targetsz == 0;
-	auto free_ram = 0ULL;
+	auto free_ram = std::uint64_t(0);
 	
 #ifdef ENV_UNIX
 	struct sysinfo sysi;
 	::sysinfo(&sysi);
-	free_ram = sysi.freeram;
+	free_ram = sysi.freeram * sysi.mem_unit;
 #else
 	MEMORYSTATUSEX status;
 	status.dwLength = sizeof(status);
@@ -290,15 +291,15 @@ static void prepare(struct sysdrainoptions& sdopts)
 	free_ram = status.ullTotalPhys;
 #endif
 	message(VERBOSITY_1, "\n");
-	message(VERBOSITY_1, "free ram: %llu", free_ram);
+	message(VERBOSITY_1, "free ram: %" PRIu64, free_ram);
 	
 	if (sdopts.so_targetsz) {
 		sdopts.so_targetsz = free_ram - sdopts.so_targetsz;
-		std::uint64_t diff = (std::uint64_t)(sdopts.so_targetsz / 10.0);
+		auto diff = std::uint64_t(sdopts.so_targetsz / 10.0);
 		sdopts.so_ceilsz = sdopts.so_targetsz + diff;
 		sdopts.so_floorsz = sdopts.so_targetsz - diff;
 	} else {
-		double chfactor = sdopts.so_targetpercent / 100.0;
+		auto chfactor = double(sdopts.so_targetpercent / 100.0);
 		sdopts.so_targetsz = (std::uint64_t)(free_ram * chfactor);
 		sdopts.so_ceilsz = (std::uint64_t)(free_ram * (chfactor + 0.1));
 		sdopts.so_floorsz = (std::uint64_t)(free_ram * (chfactor - 0.1));
@@ -323,11 +324,11 @@ static void handle_more_memory(struct sysdrain& drain,
 			error("out of slots");
 		}
 		
-		std::uint64_t new_slot = drain.d_end + 1;
-		std::uint64_t new_slotsz = 1 << rand_uniform_range(
+		auto new_slot = std::uint64_t(drain.d_end + 1);
+		auto new_slotsz = std::uint64_t(1 << rand_uniform_range(
 			SYSDRAIN_MINRANDSHIFT,
 			SYSDRAIN_MAXRANDSHIFT
-		);
+		));
 		
 		try {
 			drain.d_ptrslots[new_slot] = new char[new_slotsz];
@@ -353,9 +354,9 @@ static void handle_less_memory(struct sysdrain& drain,
 {
 	(void)sdopts;
 	
-	while (drain.d_lcl_floorsz < drain.d_memsz && steps > 0) {
-		std::uint64_t slot = rand_uniform_range(0, drain.d_end);
-		std::uint64_t slotsz = drain.d_szslots[slot];
+	while (drain.d_lcl_floorsz < drain.d_memsz && drain.d_end > 0 && steps > 0) {
+		auto slot = rand_uniform_range(0, drain.d_end);
+		auto slotsz = drain.d_szslots[slot];
 		
 		delete [] drain.d_ptrslots[slot];
 		
@@ -378,7 +379,7 @@ static void handle_less_memory(struct sysdrain& drain,
 static void handle_memory(struct sysdrain& drain,
 	const struct sysdrainoptions& sdopts)
 {
-	int situation_nominal = (
+	auto situation_nominal = (
 		drain.d_memsz >= drain.d_lcl_floorsz &&
 		drain.d_memsz <= drain.d_lcl_ceilsz
 	);
@@ -438,7 +439,7 @@ static void drain(const struct sysdrainoptions& sdopts)
 		drain.d_lcl_floorsz
 	);
 	
-	drain.d_slots = static_cast<std::uint64_t>((
+	drain.d_slots = std::uint64_t((
 		drain.d_lcl_ceilsz / (1 << SYSDRAIN_MINRANDSHIFT)
 	) + 1);
 	
