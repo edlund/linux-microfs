@@ -22,6 +22,7 @@
 #include "hostprogs.h"
 #include "hostprogs_lib.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -31,27 +32,27 @@
 
 static int test_sz(__u32 blksz)
 {
-	return (
-		blksz == 512 ||
-		blksz == 1024 ||
-		blksz == 2048 ||
-		blksz == 4096 ||
-		blksz == 8192 ||
-		blksz == 16384 ||
-		blksz == 32768 ||
-		blksz == 65536 ||
-		blksz == 131072 ||
-		blksz == 1048576
+	return (false
+		|| blksz == 512
+		|| blksz == 1024
+		|| blksz == 2048
+		|| blksz == 4096
+		|| blksz == 8192
+		|| blksz == 16384
+		|| blksz == 32768
+		|| blksz == 65536
+		|| blksz == 131072
+		|| blksz == 1048576
 	);
 }
 
 static int quicktest_sz(__u32 blksz)
 {
-	return (
-		blksz == 512 ||
-		blksz == 4096 ||
-		blksz == 131072 ||
-		blksz == 1048576
+	return (false
+		|| blksz == 512
+		|| blksz == 4096
+		|| blksz == 131072
+		|| blksz == 1048576
 	);
 }
 
@@ -74,7 +75,7 @@ static void usage(const char* const exe, FILE* const dest)
 static void print_blockszs(const struct hostprog_lib* lib, int (*filter)(__u32))
 {
 	const __u32 start = lib->hl_info->li_min_blksz == 0
-		? sysconf(_SC_PAGESIZE)
+		? (__u32)sysconf(_SC_PAGESIZE)
 		: lib->hl_info->li_min_blksz;
 	
 	for (__u32 sz = start; sz <= lib->hl_info->li_max_blksz; sz *= 2) {

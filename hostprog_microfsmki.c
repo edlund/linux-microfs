@@ -155,8 +155,8 @@ static size_t namelen(const char* const name)
 		 * mkcramfs does it).
 		 */
 		error("file name \"%s\" is too long, it is %zu bytes and"
-			" %llu bytes is the maximum length", name,
-			namelen, MICROFS_MAXNAMELEN);
+			" %llu bytes is the maximum length",
+			name, namelen, MICROFS_MAXNAMELEN);
 	}
 	return namelen;
 }
@@ -173,9 +173,8 @@ static __u64 update_upperbound(struct imgspec* const spec,
 	if ((S_ISREG(ent->e_mode) || S_ISLNK(ent->e_mode)) && ent->e_size) {
 		/* The size of a compressed file can never get bigger than
 		 * it would be if all its blocks would compress to their
-		 * worst-case sizes (as dictated by zlib). (Most likely this
-		 * will rarely happen "naturally", but sometimes it is okay
-		 * to be a pessimist.)
+		 * worst-case sizes. (Most likely this will rarely happen
+		 * "naturally", but sometimes it is okay to be a pessimist.)
 		 */
 		const __u64 blks = i_blks(ent->e_size, spec->sp_blksz);
 		ent->e_blkptrs = blks + 1;
