@@ -22,9 +22,12 @@
 #endif
 #define __LIBINFO_ZSTD_H__
 
+#define MICROFS_ZSTD_MINWINSZ_SHIFT 10
+#define MICROFS_ZSTD_MINWINSZ (1 << MICROFS_ZSTD_MINWINSZ_SHIFT)
+
 static const struct libinfo libinfo_zstd = {
 	.li_id = MICROFS_FLAG_DECOMPRESSOR_ZSTD,
-	.li_min_blksz = 1024,
+	.li_min_blksz = MICROFS_MINBLKSZ,
 	.li_max_blksz = MICROFS_MAXBLKSZ,
 	.li_dd_sz = 0,
 	.li_name = "zstd"

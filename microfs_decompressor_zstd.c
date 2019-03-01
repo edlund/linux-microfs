@@ -42,7 +42,7 @@ static int decompressor_zstd_create(struct microfs_sb_info* sbi, void** dest)
 	if (!zdat)
 		goto err_mem_zdat;
 	
-	zdat->z_window_size = sbi->si_blksz;
+	zdat->z_window_size = max_t(size_t, sbi->si_blksz, MICROFS_ZSTD_MINWINSZ);
 	zdat->z_workspace_size = ZSTD_DStreamWorkspaceBound(zdat->z_window_size);
 	zdat->z_workspace = vmalloc(zdat->z_workspace_size);
 	if (zdat->z_workspace == NULL)
